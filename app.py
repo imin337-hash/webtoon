@@ -80,7 +80,7 @@ def update_sidekick_defaults():
         st.session_state.sidekick_desc_input = SIDEKICK_DEFAULTS[selected]
 
 # ==========================================
-# 4. Gemini 시나리오 생성 로직
+# 4. Gemini 시나리오 생성 로직 (자동 연결 시스템 적용)
 # ==========================================
 def generate_gemini_story(api_key, theme, content):
     """Gemini API를 호출하여 10컷 시나리오를 생성합니다."""
@@ -88,10 +88,15 @@ def generate_gemini_story(api_key, theme, content):
     # 1. API 설정
     genai.configure(api_key=api_key)
     
-    # [수정됨] 모델명을 'gemini-pro'로 변경 (가장 안정적)
-    model = genai.GenerativeModel('gemini-pro') 
+    # [수정] 여러 모델을 순서대로 시도하는 로직
+    # 최신 모델(1.5-flash)부터 구형 모델(pro, 1.0-pro)까지 순차적으로 접속 시도
+    models_to_try = [
+        'gemini-1.5-flash', 
+        'gemini-1.5-pro',
+        'gemini-1.0-pro', 
+        'gemini-pro'
+    ]
 
-    # 2. 프롬프트 작성
     prompt = f"""
     You are a professional webtoon writer.
     Create a funny and relatable 10-cut storyboard based on the user's Theme and Content.
@@ -111,32 +116,41 @@ def generate_gemini_story(api_key, theme, content):
     Make the story have a clear beginning, middle (crisis), and end (twist or happy ending).
     """
 
-    try:
-        # 3. Gemini에게 요청
-        response = model.generate_content(prompt)
-        text_data = response.text
+    last_error = None
 
-        # 4. 결과 파싱
-        parsed_data = []
-        lines = text_data.strip().split('\n')
-        
-        for line in lines:
-            if "|" in line and "Cut" in line:
-                parts = line.split('|')
-                if len(parts) >= 3:
-                    cut_num = parts[0].strip().replace("Cut ", "").replace("*", "")
-                    action = parts[1].strip()
-                    text = parts[2].strip()
-                    parsed_data.append({"Cut": cut_num, "Action": action, "Text": text})
-        
-        if not parsed_data:
-            return generate_template_story(content)
+    # 모델 리스트를 순회하며 접속 시도
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            text_data = response.text
+
+            # 결과 파싱
+            parsed_data = []
+            lines = text_data.strip().split('\n')
             
-        return parsed_data[:10]
-
-    except Exception as e:
-        st.error(f"Gemini 연결 오류: {e}")
-        return generate_template_story(content)
+            for line in lines:
+                if "|" in line and "Cut" in line:
+                    parts = line.split('|')
+                    if len(parts) >= 3:
+                        cut_num = parts[0].strip().replace("Cut ", "").replace("*", "")
+                        action = parts[1].strip()
+                        text = parts[2].strip()
+                        parsed_data.append({"Cut": cut_num, "Action": action, "Text": text})
+            
+            # 파싱 성공 시 바로 반환 (성공!)
+            if parsed_data:
+                return parsed_data[:10]
+        
+        except Exception as e:
+            # 실패하면 다음 모델로 넘어감
+            last_error = e
+            continue
+    
+    # 모든 모델이 실패했을 경우
+    st.error(f"모든 Gemini 모델 연결 실패. (오류 메시지: {last_error})")
+    st.info("💡 터미널에 'pip install --upgrade google-generativeai' 를 입력해서 라이브러리를 업데이트 해보세요.")
+    return generate_template_story(content)
 
 def generate_template_story(topic):
     return [
@@ -211,7 +225,6 @@ def build_prompts(rows, cfeat, coutfit, style_name, layout, lang, seed, use_side
 st.sidebar.header("💎 Gemini API 설정")
 gemini_api_key = st.sidebar.text_input("Google Gemini API Key", type="password", placeholder="AI Studio에서 받은 키 입력")
 st.sidebar.caption("키가 없으면 '기본 템플릿'으로 동작합니다.")
-st.sidebar.markdown("[👉 API Key 발급받기 (Google AI Studio)](https://aistudio.google.com/app/apikey)")
 st.sidebar.divider()
 
 st.sidebar.header("1️⃣ 캐릭터 설정")
@@ -265,7 +278,7 @@ with col3:
     st.write("")
     if st.button("✨ Gemini로 생성", type="primary"):
         if gemini_api_key:
-            with st.spinner("Gemini가 시나리오를 쓰고 있습니다..."):
+            with st.spinner("Gemini가 시나리오를 쓰고 있습니다... (최대 10초 소요)"):
                 st.session_state.scenario_rows = generate_gemini_story(gemini_api_key, theme_input, content_input)
                 st.toast("Gemini가 시나리오를 완성했습니다! 💎")
         else:
