@@ -2,9 +2,7 @@
 import streamlit as st
 import sys
 
-# ==========================================
 # 0. 라이브러리 진단 및 임포트
-# ==========================================
 try:
     import google.generativeai as genai
     lib_version = genai.__version__
@@ -17,7 +15,7 @@ except ImportError:
 st.set_page_config(page_title="마이툰: 풀옵션 에디션", page_icon="💎", layout="wide")
 
 # ==========================================
-# 2. 데이터 (캐릭터, 조연, 스타일 복구 완료)
+# 2. 데이터 (캐릭터, 조연, 스타일)
 # ==========================================
 CHAR_DEFAULTS = {
     "나노바나나 (Original)": ("Cute anthropomorphic Banana character named 'Nano', wearing a sleek futuristic pro-headset", "yellow body, expressive face"),
@@ -84,22 +82,90 @@ def update_sidekick_defaults():
         st.session_state.sidekick_desc_input = SIDEKICK_DEFAULTS[selected]
 
 # ==========================================
-# 3. Gemini 시나리오 생성 (자동 연결 시스템)
+# 3. 사이드바: API 키 및 모델 자동 탐색 (핵심 수정)
 # ==========================================
-def generate_gemini_story(api_key, theme, content):
+st.sidebar.header("🔧 설정 및 모델 선택")
+
+# API 키 입력
+gemini_api_key = st.sidebar.text_input("Gemini API Key", type="password")
+
+# [핵심] 사용 가능한 모델 자동 불러오기
+available_models = []
+if gemini_api_key and has_lib:
+    try:
+        genai.configure(api_key=gemini_api_key)
+        # 구글에게 직접 물어보는 코드
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                # 모델 이름만 깔끔하게 추출 (models/gemini-pro -> gemini-pro)
+                name = m.name.replace("models/", "")
+                available_models.append(name)
+    except Exception as e:
+        st.sidebar.error(f"키 오류 또는 연결 실패: {e}")
+
+# 모델 선택 박스 (자동으로 채워짐)
+if available_models:
+    selected_model_name = st.sidebar.selectbox("🤖 사용할 모델 선택", available_models, index=0)
+    st.sidebar.success(f"연결 성공! {selected_model_name}")
+else:
+    # 목록을 못 불러왔을 때 수동 입력 (비상용)
+    selected_model_name = st.sidebar.text_input("모델명 수동 입력", "gemini-1.5-flash")
+    if gemini_api_key:
+        st.sidebar.warning("모델 목록을 못 가져왔습니다. 수동 입력값을 씁니다.")
+
+st.sidebar.caption(f"📚 라이브러리 버전: {lib_version}")
+st.sidebar.divider()
+
+# --- 사이드바: 캐릭터 & 조연 ---
+st.sidebar.header("1️⃣ 캐릭터 설정")
+char_type = st.sidebar.selectbox("주인공", list(CHAR_DEFAULTS.keys()), key="char_type_selector", on_change=update_char_defaults)
+
+if 'char_feature_input' not in st.session_state: st.session_state.char_feature_input = CHAR_DEFAULTS["나노바나나 (Original)"][0]
+if 'char_outfit_input' not in st.session_state: st.session_state.char_outfit_input = CHAR_DEFAULTS["나노바나나 (Original)"][1]
+
+char_feature = st.sidebar.text_input("외모 특징", key="char_feature_input")
+char_outfit = st.sidebar.text_input("의상", key="char_outfit_input")
+
+with st.sidebar.expander("👥 조연(Sidekick) 추가"):
+    use_sidekick = st.checkbox("조연 등장", value=False)
+    if use_sidekick:
+        sidekick_type = st.selectbox("조연 유형", list(SIDEKICK_DEFAULTS.keys()), key="sidekick_selector", on_change=update_sidekick_defaults)
+        
+        custom_sk_species = ""
+        if sidekick_type == "직접 입력 (Custom)":
+            custom_sk_species = st.text_input("조연 종족", "Baby Dragon")
+
+        if 'sidekick_desc_input' not in st.session_state:
+            st.session_state.sidekick_desc_input = SIDEKICK_DEFAULTS.get("작은 새 (Bird)", "")
+            
+        sidekick_desc = st.text_input("조연 묘사", key="sidekick_desc_input")
+
+        if sidekick_type == "직접 입력 (Custom)":
+            final_sidekick_desc = f"cute {custom_sk_species}, {sidekick_desc}"
+        else:
+            final_sidekick_desc = sidekick_desc
+    else:
+        final_sidekick_desc = ""
+
+st.sidebar.divider()
+
+# --- 사이드바: 스타일 & 옵션 ---
+st.sidebar.header("2️⃣ 스타일 설정")
+style_name = st.sidebar.select_slider("그림체", options=list(ART_STYLE_MAP.keys()), value="5. 웹툰/셀식 채색 (Webtoon)")
+layout_mode = st.sidebar.selectbox("연출", ["1. 안정적", "2. 다이내믹", "3. 시네마틱", "4. 셀카 모드", "5. 1인칭 시점", "6. 아이소메트릭", "7. 항공 샷", "8. 로우 앵글", "9. 어안 렌즈", "10. 실루엣"])
+panel_choice = st.sidebar.selectbox("컷 수", ["1컷 (추천)", "2컷", "3컷", "4컷", "캐릭터 시트"])
+text_lang = st.sidebar.radio("말풍선", ["한국어", "영어", "없음"])
+seed_num = st.sidebar.number_input("Seed", value=1234)
+
+# ==========================================
+# 4. 시나리오 생성 로직
+# ==========================================
+def generate_gemini_story(api_key, model_name, theme, content):
     if not has_lib:
         return None, "라이브러리 미설치"
 
     genai.configure(api_key=api_key)
     
-    # [핵심] 사용 가능한 모델 자동 순환 시도
-    models_to_try = [
-        'gemini-1.5-flash', 
-        'gemini-1.5-pro',
-        'gemini-1.0-pro', 
-        'gemini-pro'
-    ]
-
     prompt = f"""
     You are a professional webtoon writer.
     Create a funny and relatable 10-cut storyboard.
@@ -115,32 +181,30 @@ def generate_gemini_story(api_key, theme, content):
     Example: Cut 1|Holding a card|안녕?
     """
 
-    last_error = None
-    for model_name in models_to_try:
-        try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
-            text_data = response.text
+    try:
+        # 사용자가 선택한 모델명으로 직접 호출
+        model = genai.GenerativeModel(model_name)
+        response = model.generate_content(prompt)
+        text_data = response.text
 
-            # 파싱
-            parsed_data = []
-            for line in text_data.strip().split('\n'):
-                if "|" in line and "Cut" in line:
-                    parts = line.split('|')
-                    if len(parts) >= 3:
-                        cut_num = parts[0].strip().replace("Cut ", "").replace("*", "")
-                        action = parts[1].strip()
-                        text = parts[2].strip()
-                        parsed_data.append({"Cut": cut_num, "Action": action, "Text": text})
-            
-            if parsed_data:
-                return parsed_data[:10], model_name  # 성공하면 리턴
-        except Exception as e:
-            last_error = e
-            continue
-            
-    st.error(f"모든 모델 연결 실패: {last_error}")
-    return generate_template_story(content), "Template (Error)"
+        # 파싱
+        parsed_data = []
+        for line in text_data.strip().split('\n'):
+            if "|" in line and "Cut" in line:
+                parts = line.split('|')
+                if len(parts) >= 3:
+                    cut_num = parts[0].strip().replace("Cut ", "").replace("*", "")
+                    action = parts[1].strip()
+                    text = parts[2].strip()
+                    parsed_data.append({"Cut": cut_num, "Action": action, "Text": text})
+        
+        if parsed_data:
+            return parsed_data[:10], model_name
+        else:
+            return None, "파싱 실패 (AI 응답 오류)"
+
+    except Exception as e:
+        return None, str(e)
 
 def generate_template_story(topic):
     return [
@@ -156,9 +220,6 @@ def generate_template_story(topic):
         {"Cut": 10, "Action": "waving goodbye, holding subscribe button", "Text": "다들 화이팅!"}
     ]
 
-# ==========================================
-# 4. 프롬프트 빌더 (기능 복구)
-# ==========================================
 def build_prompts(rows, cfeat, coutfit, style_name, layout, lang, seed, use_side, side_desc, panel_mode):
     full_char = f"{cfeat}, wearing {coutfit}, expressive face"
     if use_side: full_char += f", accompanied by {side_desc}"
@@ -211,62 +272,9 @@ def build_prompts(rows, cfeat, coutfit, style_name, layout, lang, seed, use_side
     return prompts
 
 # ==========================================
-# 5. UI 구성 (사이드바 진단 + 풀옵션)
+# 5. 메인 화면
 # ==========================================
-
-# --- 사이드바: 진단 & API ---
-st.sidebar.header("🔧 시스템 진단")
-st.sidebar.caption(f"📚 라이브러리: {lib_version}")
-if not has_lib:
-    st.sidebar.error("pip install google-generativeai 필요")
-
-gemini_api_key = st.sidebar.text_input("Gemini API Key", type="password")
-
-st.sidebar.divider()
-
-# --- 사이드바: 캐릭터 & 조연 ---
-st.sidebar.header("1️⃣ 캐릭터 설정")
-char_type = st.sidebar.selectbox("주인공", list(CHAR_DEFAULTS.keys()), key="char_type_selector", on_change=update_char_defaults)
-
-if 'char_feature_input' not in st.session_state: st.session_state.char_feature_input = CHAR_DEFAULTS["나노바나나 (Original)"][0]
-if 'char_outfit_input' not in st.session_state: st.session_state.char_outfit_input = CHAR_DEFAULTS["나노바나나 (Original)"][1]
-
-char_feature = st.sidebar.text_input("외모 특징", key="char_feature_input")
-char_outfit = st.sidebar.text_input("의상", key="char_outfit_input")
-
-with st.sidebar.expander("👥 조연(Sidekick) 추가"):
-    use_sidekick = st.checkbox("조연 등장", value=False)
-    if use_sidekick:
-        sidekick_type = st.selectbox("조연 유형", list(SIDEKICK_DEFAULTS.keys()), key="sidekick_selector", on_change=update_sidekick_defaults)
-        
-        custom_sk_species = ""
-        if sidekick_type == "직접 입력 (Custom)":
-            custom_sk_species = st.text_input("조연 종족", "Baby Dragon")
-
-        if 'sidekick_desc_input' not in st.session_state:
-            st.session_state.sidekick_desc_input = SIDEKICK_DEFAULTS.get("작은 새 (Bird)", "")
-            
-        sidekick_desc = st.text_input("조연 묘사", key="sidekick_desc_input")
-
-        if sidekick_type == "직접 입력 (Custom)":
-            final_sidekick_desc = f"cute {custom_sk_species}, {sidekick_desc}"
-        else:
-            final_sidekick_desc = sidekick_desc
-    else:
-        final_sidekick_desc = ""
-
-st.sidebar.divider()
-
-# --- 사이드바: 스타일 & 옵션 ---
-st.sidebar.header("2️⃣ 스타일 설정")
-style_name = st.sidebar.select_slider("그림체", options=list(ART_STYLE_MAP.keys()), value="5. 웹툰/셀식 채색 (Webtoon)")
-layout_mode = st.sidebar.selectbox("연출", ["1. 안정적", "2. 다이내믹", "3. 시네마틱", "4. 셀카 모드", "5. 1인칭 시점", "6. 아이소메트릭", "7. 항공 샷", "8. 로우 앵글", "9. 어안 렌즈", "10. 실루엣"])
-panel_choice = st.sidebar.selectbox("컷 수", ["1컷 (추천)", "2컷", "3컷", "4컷", "캐릭터 시트"])
-text_lang = st.sidebar.radio("말풍선", ["한국어", "영어", "없음"])
-seed_num = st.sidebar.number_input("Seed", value=1234)
-
-# --- 메인 화면 ---
-st.title("💎 마이툰 with Gemini (풀옵션)")
+st.title("💎 마이툰 with Gemini (모델 자동탐색)")
 st.markdown("테마와 내용을 입력하면 AI가 시나리오를 짜줍니다. (API 키 필수)")
 
 col1, col2, col3 = st.columns([0.3, 0.5, 0.2])
@@ -279,11 +287,15 @@ with col3:
     st.write("")
     if st.button("✨ AI 생성", type="primary"):
         if gemini_api_key:
-            with st.spinner("Gemini가 시나리오를 쓰고 있습니다..."):
-                result, model_name = generate_gemini_story(gemini_api_key, theme_input, content_input)
+            # 선택된 모델로 실행
+            with st.spinner(f"{selected_model_name} 모델이 시나리오를 쓰고 있습니다..."):
+                result, model_name = generate_gemini_story(gemini_api_key, selected_model_name, theme_input, content_input)
                 if result:
                     st.session_state.scenario_rows = result
                     st.toast(f"성공! (모델: {model_name})")
+                else:
+                    st.error(f"실패: {model_name}")
+                    st.session_state.scenario_rows = generate_template_story(content_input)
         else:
             st.session_state.scenario_rows = generate_template_story(content_input)
             st.toast("기본 템플릿 사용")
