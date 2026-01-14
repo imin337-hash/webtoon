@@ -152,4 +152,112 @@ def build_prompts(rows, cfeat, coutfit, style_name, layout, lang, seed, use_side
         neg_kw = "--no comic grid, storyboard, multiple panels, split view"
     elif "2컷" in panel_mode:
         mode_kw = "2 panel comic strip, vertical layout"
-        neg_kw = "--no 4 panel grid
+        neg_kw = "--no 4 panel grid, single image"
+    elif "3컷" in panel_mode:
+        mode_kw = "3 panel comic strip, vertical webtoon layout"
+        neg_kw = "--no single image, 4 panel grid"
+    elif "4컷" in panel_mode:
+        mode_kw = "4 panel comic, 2x2 grid layout"
+        neg_kw = "--no single image, vertical strip"
+    else:
+        mode_kw = "character sheet, multiple poses, white background"
+        neg_kw = ""
+
+    prompts = []
+    for row in rows:
+        action = row["Action"]
+        text = row["Text"]
+        if lang == "한국어": text_p = f'speech bubble with text "{text}", written in legible Korean Hangul font, manhwa style speech bubble'
+        elif lang == "영어": text_p = f'speech bubble with text "{text}", written in English comic font'
+        else: text_p = "no text"
+            
+        p = f"/imagine prompt: **[Subject]** {full_char} **[Action]** {action} **[Text]** {text_p} **[Style]** {style_kw}, {angle_kw}, {mode_kw} --ar 4:5 --niji 6 --seed {seed} {neg_kw}"
+        prompts.append(p)
+    return prompts
+
+# ==========================================
+# 6. UI 구성
+# ==========================================
+
+# --- 사이드바 ---
+st.sidebar.header("🔑 API 설정 (선택사항)")
+api_key = st.sidebar.text_input("OpenAI API Key (GPT 사용)", type="password", placeholder="sk-...")
+st.sidebar.caption("키가 없으면 '기본 템플릿' 모드로 동작합니다.")
+st.sidebar.divider()
+
+st.sidebar.header("1️⃣ 캐릭터 설정")
+char_type = st.sidebar.selectbox("주인공 선택", list(CHAR_DEFAULTS.keys()), key="char_type_selector", on_change=update_char_defaults)
+if 'char_feature_input' not in st.session_state: st.session_state.char_feature_input = CHAR_DEFAULTS["나노바나나 (Original)"][0]
+if 'char_outfit_input' not in st.session_state: st.session_state.char_outfit_input = CHAR_DEFAULTS["나노바나나 (Original)"][1]
+char_feature = st.sidebar.text_input("외모/종족 특징", key="char_feature_input")
+char_outfit = st.sidebar.text_input("의상/스타일", key="char_outfit_input")
+
+with st.sidebar.expander("👥 조연(Sidekick) 추가"):
+    use_sidekick = st.checkbox("조연 등장시키기", value=False)
+    sidekick_type = st.selectbox("조연 유형", list(SIDEKICK_DEFAULTS.keys()))
+    sidekick_desc = st.text_input("조연 묘사", value=SIDEKICK_DEFAULTS[sidekick_type])
+
+st.sidebar.divider()
+st.sidebar.header("2️⃣ 스타일 설정")
+style_name = st.sidebar.select_slider("그림체 농도", options=list(ART_STYLE_MAP.keys()), value="5. 웹툰/셀식 채색 (Webtoon)")
+layout_mode = st.sidebar.selectbox("연출 방식", ["1. 안정적 (Standard)", "2. 다이내믹 (Dynamic)", "3. 시네마틱 (Cinematic)", "4. 셀카 모드 (Selfie)", "5. 1인칭 시점 (POV)", "6. 아이소메트릭 (Isometric)", "7. 항공 샷 (Drone)", "8. 로우 앵글 (Low Angle)", "9. 어안 렌즈 (Fish-eye)", "10. 실루엣 (Silhouette)"])
+panel_choice = st.sidebar.selectbox("🎞️ 1장당 컷 수", ["1컷 (추천)", "2컷 (세로 분할)", "3컷 (웹툰형)", "4컷 (격자)", "캐릭터 시트"])
+text_lang = st.sidebar.radio("말풍선 언어", ["한국어", "영어", "없음"])
+seed_num = st.sidebar.number_input("시드(Seed)", value=1234)
+
+# --- 메인 화면 ---
+st.subheader("🤖 스토리 생성기")
+
+col1, col2 = st.columns([0.7, 0.3])
+with col1:
+    topic_input = st.text_input("어떤 이야기를 만들까요?", value="편의점 알바 첫 출근")
+with col2:
+    st.write("") 
+    st.write("")
+    if st.button("✨ AI 시나리오 작성", type="primary"):
+        if api_key:
+            with st.spinner("GPT가 창의적인 이야기를 쓰고 있습니다..."):
+                st.session_state.scenario_rows = generate_ai_story(api_key, topic_input)
+                st.toast("AI 모드로 생성되었습니다! 🤖")
+        else:
+            st.session_state.scenario_rows = generate_template_story(topic_input)
+            st.toast("기본 템플릿 모드로 생성되었습니다. (API Key 없음) 📝")
+
+if 'scenario_rows' not in st.session_state:
+    st.session_state.scenario_rows = generate_template_story("편의점 알바 첫 출근")
+
+# 에디터
+st.markdown("### 🎬 시나리오 편집")
+edited_rows = st.data_editor(
+    st.session_state.scenario_rows,
+    num_rows="fixed",
+    column_config={
+        "Cut": st.column_config.NumberColumn("컷", disabled=True, width="small"),
+        "Action": st.column_config.TextColumn("행동 (영어)", width="large"),
+        "Text": st.column_config.TextColumn("대사", width="medium"),
+    },
+    hide_index=True,
+    use_container_width=True
+)
+
+st.write("")
+if st.button("🚀 프롬프트 변환하기 (Click)", type="primary", use_container_width=True):
+    final_prompts = build_prompts(
+        edited_rows, char_feature, char_outfit, 
+        style_name, layout_mode, text_lang, seed_num, use_sidekick, sidekick_desc, panel_choice
+    )
+    st.session_state.final_prompts = final_prompts
+
+# 결과 출력
+if 'final_prompts' in st.session_state and st.session_state.final_prompts:
+    st.divider()
+    st.success("✅ 프롬프트 생성 완료!")
+    
+    with st.expander("📋 전체 프롬프트 (메모장 저장용)"):
+        st.code("\n\n".join(st.session_state.final_prompts), language="markdown")
+
+    st.markdown("### 👇 컷별 상세 확인 & 복사")
+    for i, p in enumerate(st.session_state.final_prompts):
+        current_text = edited_rows[i]["Text"]
+        st.markdown(f"#### 🎞️ Cut {i+1}: {current_text}")
+        st.code(p, language="markdown")
