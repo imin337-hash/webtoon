@@ -6,10 +6,10 @@ import random
 st.set_page_config(page_title="마이툰: AI 인스타툰 메이커", page_icon="🎨", layout="wide")
 
 # 2. 헤더
-st.title("🎨 마이툰(MyToon): 공감 100% 인스타툰 생성기")
+st.title("🎨 마이툰(MyToon): 조연 & 자동 생성 기능 탑재")
 st.markdown("""
-**캐릭터, 스토리, 그림체**를 선택하면 10컷의 인스타툰 프롬프트를 완성해줍니다.
-주제만 던져주면 사람들이 공감할 수 있는 **깊이 있는 이야기**를 만들어드립니다.
+**주연과 조연**이 함께 만드는 이야기! 
+맨 아래 **[⚡ 원클릭 자동 생성 코드]**를 사용하면 10컷이 한 번에 만들어집니다.
 """)
 
 # ==========================================
@@ -24,6 +24,14 @@ CHAR_DEFAULTS = {
     "사람-여자 (Girl)": ("long brown hair, cute face, k-pop style", "pastel hoodie, denim skirt"),
     "사람-남자 (Boy)": ("short black hair, casual look, glasses", "oversized sweatshirt, cargo pants"),
     "직접 입력 (Custom)": ("", "")
+}
+
+SIDEKICK_DEFAULTS = {
+    "작은 새 (Bird)": "tiny cute blue bird friend",
+    "아기 고양이 (Kitten)": "tiny yellow kitten friend",
+    "로봇 (Robot)": "mini floating robot friend",
+    "유령 (Ghost)": "cute marshmallow ghost friend",
+    "사람 친구 (Friend)": "best friend character wearing casual clothes"
 }
 
 THEME_IDEAS = {
@@ -63,13 +71,8 @@ def generate_random_idea():
     idea = random.choice(THEME_IDEAS[current_theme_key])
     st.session_state.story_detail_input = idea
 
-# ==========================================
-# 4. 딥 스토리 (짧고 굵은 단어 위주로 수정)
-# ==========================================
 def get_deep_story(theme, detail):
-    """
-    한글 생성 성공률을 높이기 위해 대사를 최대한 짧게(2~4글자) 수정했습니다.
-    """
+    # 한글 대사 최적화 (2~4글자)
     if "일상" in theme:
         return [
             (f"posing confidently with text '{detail}'", "목표!", f"Goal: {detail}"),
@@ -175,8 +178,15 @@ if char_type == "직접 입력 (Custom)":
 if 'char_feature_input' not in st.session_state: st.session_state.char_feature_input = CHAR_DEFAULTS["고양이 (Cat)"][0]
 if 'char_outfit_input' not in st.session_state: st.session_state.char_outfit_input = CHAR_DEFAULTS["고양이 (Cat)"][1]
 
-char_feature = st.sidebar.text_input("외모 특징 (자동/수정)", key="char_feature_input")
-char_outfit = st.sidebar.text_input("착용 의상 (자동/수정)", key="char_outfit_input")
+char_feature = st.sidebar.text_input("외모 특징", key="char_feature_input")
+char_outfit = st.sidebar.text_input("착용 의상", key="char_outfit_input")
+
+# [NEW] 조연 설정 (Expander)
+with st.sidebar.expander("👥 조연(Supporting Character) 추가"):
+    use_sidekick = st.checkbox("조연 등장시키기", value=False)
+    if use_sidekick:
+        sidekick_type = st.selectbox("조연 유형", list(SIDEKICK_DEFAULTS.keys()))
+        sidekick_desc = st.text_input("조연 묘사", value=SIDEKICK_DEFAULTS[sidekick_type])
 
 st.sidebar.divider()
 st.sidebar.header("2️⃣ 스토리 설정")
@@ -195,7 +205,7 @@ with col_btn:
 
 if 'story_detail_input' not in st.session_state: st.session_state.story_detail_input = "아무것도 안 했는데 벌써 밤"
 with col_text:
-    story_detail = st.text_input("세부 소재 (직접 입력)", key="story_detail_input")
+    story_detail = st.text_input("세부 소재", key="story_detail_input")
 
 st.sidebar.divider()
 st.sidebar.header("3️⃣ 스타일 & 연출")
@@ -212,17 +222,23 @@ text_lang = st.sidebar.radio("말풍선 언어", ["한국어", "영어", "없음
 seed_num = st.sidebar.number_input("시드(Seed)", value=1234)
 
 # ==========================================
-# 6. 프롬프트 생성 로직 (한글 최적화 적용)
+# 6. 프롬프트 생성 로직 (순열 기능 추가)
 # ==========================================
-def make_prompts(mode, ctype, cspec, cfeat, coutfit, theme, detail, layout, style_name, lang, seed):
+def make_prompts(mode, ctype, cspec, cfeat, coutfit, theme, detail, layout, style_name, lang, seed, use_side, side_desc):
     
+    # 주인공
     if ctype == "직접 입력 (Custom)": species = cspec
     else: species = ctype.split("(")[1].replace(")", "")
     
     if species in ["Cat", "Dog", "Rabbit", "Bear", "Hamster", "Tiger"]: base_char = f"Cute anthropomorphic {species} character"
     else: base_char = f"Cute {species} character"
     
+    # 조연 통합
     full_char_desc = f"{base_char}, {cfeat}, wearing {coutfit}, expressive face"
+    if use_side:
+        full_char_desc += f", accompanied by {side_desc}"
+
+    # 스타일 & 레이아웃
     style_kw = ART_STYLE_MAP[style_name]
     
     if "다이내믹" in layout: angle_kw = "dynamic dutch angle, action lines"
@@ -245,24 +261,31 @@ def make_prompts(mode, ctype, cspec, cfeat, coutfit, theme, detail, layout, styl
 
     scenarios = get_deep_story(theme, detail)
     prompts = []
+    
+    # [NEW] 순열(Permutation)용 리스트
+    perm_actions = [] 
+    
     context_str = f"Story about {detail}"
 
     for action, ko, en in scenarios:
-        # [핵심 수정] 한글 생성 성공률 높이는 프롬프트 엔지니어링
-        if "한국어" in lang: 
-            # 1. 'manhwa speech bubble' 추가
-            # 2. 'legible font' (읽기 쉬운 폰트) 추가
-            # 3. 텍스트를 두 번 강조
-            text_p = f'speech bubble with text "{ko}", written in legible Korean Hangul font, manhwa style speech bubble'
-        elif "영어" in lang: 
-            text_p = f'speech bubble with text "{en}", written in English comic font'
-        else: 
-            text_p = "no text"
-
+        if "한국어" in lang: text_p = f'speech bubble with text "{ko}", written in legible Korean Hangul font, manhwa style speech bubble'
+        elif "영어" in lang: text_p = f'speech bubble with text "{en}", written in English comic font'
+        else: text_p = "no text"
+        
+        # 개별 프롬프트
         p = f"/imagine prompt: **[Story]** {context_str} **[Subject]** {full_char_desc} **[Action]** {action} **[Text]** {text_p} **[Style]** {style_kw}, {angle_kw}, {mode_kw} --ar 4:5 --niji 6 --seed {seed} {neg_kw}"
         prompts.append(p)
 
-    return prompts, scenarios
+        # 순열용 파트 저장 (Action + Text)
+        perm_part = f"{action} **[Text]** {text_p}"
+        perm_actions.append(perm_part)
+
+    # [NEW] 순열 프롬프트 생성
+    # {Action1, Action2, ...} 형태로 묶음
+    perm_block = ", ".join(perm_actions)
+    permutation_prompt = f"/imagine prompt: **[Story]** {context_str} **[Subject]** {full_char_desc} **[Action]** {{ {perm_block} }} **[Style]** {style_kw}, {angle_kw}, {mode_kw} --ar 4:5 --niji 6 --seed {seed} {neg_kw}"
+
+    return prompts, scenarios, permutation_prompt
 
 # ==========================================
 # 7. 결과 출력 UI
@@ -270,30 +293,40 @@ def make_prompts(mode, ctype, cspec, cfeat, coutfit, theme, detail, layout, styl
 if 'generated_prompts' not in st.session_state:
     st.session_state.generated_prompts = []
     st.session_state.current_scenarios = []
+    st.session_state.perm_prompt = ""
 
-if st.button("🚀 감성 100% 마이툰 생성하기 (Click)"):
+# 버튼 클릭 시 조연 정보도 전달
+side_desc_val = sidekick_desc if use_sidekick else ""
+
+if st.button("🚀 마이툰 프롬프트 생성하기 (Click)"):
     with st.spinner(f"'{st.session_state.story_detail_input}' 이야기를 만드는 중..."):
-        prompts, scenes = make_prompts(
+        prompts, scenes, perm = make_prompts(
             output_mode, char_type, custom_species, char_feature, char_outfit, 
-            story_theme, st.session_state.story_detail_input, layout_mode, selected_style_name, text_lang, seed_num
+            story_theme, st.session_state.story_detail_input, layout_mode, selected_style_name, text_lang, seed_num,
+            use_sidekick, side_desc_val
         )
         st.session_state.generated_prompts = prompts
         st.session_state.current_scenarios = scenes
+        st.session_state.perm_prompt = perm
 
 if st.session_state.generated_prompts:
     st.divider()
     st.success(f"✅ 생성 완료! (주제: {st.session_state.story_detail_input})")
     
-    # [복사 기능]
-    st.subheader("📋 전체 프롬프트 한 번에 복사하기")
-    st.warning("⚠️ 주의: 한 번에 붙여넣으면 1컷만 나옵니다. 보관용으로만 쓰세요.")
-    all_text = "\n\n".join(st.session_state.generated_prompts)
-    st.code(all_text, language="markdown")
+    # [1] ⚡ 원클릭 자동 생성 코드 (Permutation)
+    st.subheader("⚡ 원클릭 자동 생성 코드 (추천)")
+    st.info("""
+    **이 코드를 복사해서 미드저니에 붙여넣으면, 10장의 이미지가 한 번에 생성됩니다.**
+    (미드저니가 "10개의 작업을 생성하시겠습니까?"라고 물으면 'Yes'를 누르세요.)
+    *Standard 요금제 이상 필수*
+    """)
+    st.code(st.session_state.perm_prompt, language="markdown")
     
     st.divider()
 
-    st.subheader("✂️ 컷별 상세 확인 & 복사")
-    st.caption("👇 제목을 확인하고, 아래 박스의 📄 아이콘을 눌러 복사하세요.")
+    # [2] 개별 확인 영역
+    st.subheader("✂️ 컷별 상세 확인 & 개별 복사")
+    st.caption("자동 생성이 안 되거나 Basic 요금제인 경우, 아래에서 하나씩 복사하세요.")
 
     for i, p in enumerate(st.session_state.generated_prompts):
         scene_txt = st.session_state.current_scenarios[i][1] if "한국어" in text_lang else st.session_state.current_scenarios[i][2]
