@@ -1,7 +1,4 @@
-﻿# -*- coding: utf-8 -*-
-import streamlit as st
-... (나머지 코드)
-
+# -*- coding: utf-8 -*-
 import streamlit as st
 
 # 1. 페이지 설정
