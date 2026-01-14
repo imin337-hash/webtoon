@@ -5,7 +5,7 @@ import streamlit as st
 st.set_page_config(page_title="나이툰: 나만의 인스타툰 메이커", page_icon="🎨", layout="wide")
 
 # 2. 헤더 및 소개
-st.title("🎨 나이툰(MyToon): AI 인스타툰 생성기")
+st.title("🎨 MyToon: AI 인스타툰 생성기")
 st.markdown("""
 **나만의 캐릭터**를 설정하고, 스토리와 연출을 더해 **10컷의 인스타툰 프롬프트**를 만드세요.
 모든 컷을 한 번에 복사하거나, 필요한 컷만 골라서 복사할 수 있습니다.
@@ -178,4 +178,5 @@ if st.session_state.generated_prompts:
         
         # 접이식 메뉴 사용 (제목에 내용 미리보기 표시)
         with st.expander(f"Cut {i+1}: {desc}", expanded=True):
+
             st.code(p, language="markdown")
