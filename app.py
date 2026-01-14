@@ -5,10 +5,10 @@ import streamlit as st
 st.set_page_config(page_title="나이툰: 나만의 인스타툰 메이커", page_icon="🎨", layout="wide")
 
 # 2. 헤더 및 소개
-st.title("🎨 MyToon: AI 인스타툰 생성기")
+st.title("🎨 마이툰 : AI 인스타툰 생성기")
 st.markdown("""
 **나만의 캐릭터**를 설정하고, 스토리와 연출을 더해 **10컷의 인스타툰 프롬프트**를 만드세요.
-모든 컷을 한 번에 복사하거나, 필요한 컷만 골라서 복사할 수 있습니다.
+이제 **한글 말풍선** 생성을 유도하는 기능이 추가되었습니다.
 """)
 
 # ==========================================
@@ -16,7 +16,6 @@ st.markdown("""
 # ==========================================
 st.sidebar.header("1️⃣ 캐릭터 설정 (Character)")
 
-# (1) 캐릭터 종족/유형 선택
 char_type = st.sidebar.selectbox(
     "주인공의 유형은?",
     ["고양이 (Cat)", "강아지 (Dog)", "토끼 (Rabbit)", "곰 (Bear)", "사람-여자 (Girl)", "사람-남자 (Boy)", "직접 입력 (Custom)"]
@@ -26,13 +25,11 @@ custom_species = ""
 if char_type == "직접 입력 (Custom)":
     custom_species = st.sidebar.text_input("캐릭터 유형 입력 (예: Alien, Robot)", "Hamster")
 
-# (2) 외모 특징
 char_feature = st.sidebar.text_input(
     "외모 특징 (색상, 생김새)", 
     "white fur, big round eyes, pink cheeks" if "사람" not in char_type else "brown bob hair, cute face"
 )
 
-# (3) 의상/스타일
 char_outfit = st.sidebar.text_input(
     "착용 의상 (Outfit)", 
     "yellow hoodie, casual jeans"
@@ -41,32 +38,36 @@ char_outfit = st.sidebar.text_input(
 st.sidebar.divider()
 st.sidebar.header("2️⃣ 연출 및 스타일")
 
-# (4) 서사 테마
 story_theme = st.sidebar.radio(
     "이야기 테마",
     ["일상 공감 (Daily Life)", "성장/도전 (Growth)", "꿀팁 정보 (Information)", "감동/힐링 (Healing)"]
 )
 
-# (5) 그림체 스타일
 art_style = st.sidebar.select_slider(
     "그림체 스타일",
     options=["손그림/낙서", "깔끔한 웹툰", "고퀄리티 일러스트"]
 )
 
-# (6) 레이아웃 구성
 layout_mode = st.sidebar.selectbox(
     "컷 연출 방식",
     ["안정적 (설명 위주)", "다이내믹 (만화적 과장)", "시네마틱 (영화 느낌)"]
 )
 
-# 시드 번호
+# [NEW] 말풍선 언어 설정 추가
+st.sidebar.divider()
+st.sidebar.header("3️⃣ 말풍선/언어 (Language)")
+text_lang = st.sidebar.radio(
+    "말풍선 텍스트 설정",
+    ["텍스트 없음 (No Text)", "한국어 스타일 (Korean)", "영어 스타일 (English)"]
+)
+
 seed_num = st.sidebar.number_input("일관성 시드(Seed)", value=1234, min_value=0)
 
 
 # ==========================================
 # 4. 프롬프트 생성 로직
 # ==========================================
-def make_general_prompts(ctype, cspec, cfeat, coutfit, theme, style, layout, seed):
+def make_general_prompts(ctype, cspec, cfeat, coutfit, theme, style, layout, lang, seed):
     
     # 1. 캐릭터 조립
     if ctype == "직접 입력 (Custom)":
@@ -97,7 +98,16 @@ def make_general_prompts(ctype, cspec, cfeat, coutfit, theme, style, layout, see
     else:
         angle_kw = "flat composition, symmetrical balance, clear eye-level shot"
 
-    # 4. 스토리 템플릿
+    # [NEW] 4. 언어 설정 (한글 유도 로직)
+    if lang == "한국어 스타일 (Korean)":
+        # 미드저니에게 텍스트를 " " 안에 넣어달라고 강제하고, 폰트 스타일을 지정
+        lang_kw = 'speech bubble with text "안녕", written in Korean Hangul font, manhwa style text'
+    elif lang == "영어 스타일 (English)":
+        lang_kw = 'speech bubble with text "Hello", written in English, comic book font'
+    else:
+        lang_kw = "no text, no speech bubbles"
+
+    # 5. 스토리 템플릿
     intro_action = "waving hello happily"
     climax_action = "looking confused at a problem"
     
@@ -130,7 +140,8 @@ def make_general_prompts(ctype, cspec, cfeat, coutfit, theme, style, layout, see
 
     prompts = []
     for scn in scenario_list:
-        p = f"/imagine prompt: **[Subject]** {full_char_desc} **[Action]** {scn} **[Style]** {style_kw}, {angle_kw} --ar 4:5 --niji 6 --seed {seed}"
+        # 언어 키워드(lang_kw)를 프롬프트 중간에 삽입
+        p = f"/imagine prompt: **[Subject]** {full_char_desc} **[Action]** {scn} **[Text]** {lang_kw} **[Style]** {style_kw}, {angle_kw} --ar 4:5 --niji 6 --seed {seed}"
         prompts.append(p)
     
     return prompts, full_char_desc
@@ -149,7 +160,7 @@ if st.button("🚀 인스타툰 프롬프트 생성 (Click)"):
     with st.spinner("AI가 시나리오를 작성 중입니다..."):
         prompts, summary = make_general_prompts(
             char_type, custom_species, char_feature, char_outfit, 
-            story_theme, art_style, layout_mode, seed_num
+            story_theme, art_style, layout_mode, text_lang, seed_num
         )
         st.session_state.generated_prompts = prompts
         st.session_state.char_summary = summary
@@ -171,12 +182,7 @@ if st.session_state.generated_prompts:
     st.subheader("✂️ 컷별로 골라서 복사하기")
     st.caption("각 상자를 열 필요 없이, 바로 우측의 📄 아이콘을 눌러 복사하세요.")
 
-    # 10개의 컷을 Expander(접이식)로 나열하여 제목과 내용을 명확히 구분
     for i, p in enumerate(st.session_state.generated_prompts):
-        # 컷 내용 요약 추출
-        desc = p.split("**[Action]**")[1].split("**[Style]**")[0].strip()
-        
-        # 접이식 메뉴 사용 (제목에 내용 미리보기 표시)
+        desc = p.split("**[Action]**")[1].split("**[Text]**")[0].strip()
         with st.expander(f"Cut {i+1}: {desc}", expanded=True):
-
             st.code(p, language="markdown")
