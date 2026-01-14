@@ -1,22 +1,20 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
-import random
+import google.generativeai as genai # Gemini 라이브러리
 
 # 1. 페이지 설정
-st.set_page_config(page_title="마이툰: 시나리오 에디터", page_icon="🎨", layout="wide")
+st.set_page_config(page_title="마이툰: Gemini 에디션", page_icon="💎", layout="wide")
 
 # 2. 헤더
-st.title("🎨 마이툰(MyToon): 인스타툰 시나리오 에디터")
+st.title("💎 마이툰 with Gemini: AI 시나리오 작가")
 st.markdown("""
-**API 키 필요 없이 바로 사용하세요.**
-주제를 입력하면 **10컷 시나리오 초안**을 만들어줍니다. 내용을 수정하고 프롬프트를 생성하세요.
+**Google Gemini**가 당신의 아이디어를 완벽한 10컷 인스타툰 시나리오로 만들어줍니다.
+**테마**와 **상세 내용**을 입력하고 생성 버튼을 누르세요!
 """)
 
 # ==========================================
-# 3. 데이터 및 설정 (확장된 캐릭터/조연 리스트 유지)
+# 3. 데이터 및 설정
 # ==========================================
-
-# [주인공] 총 17종
 CHAR_DEFAULTS = {
     "나노바나나 (Original)": ("Cute anthropomorphic Banana character named 'Nano', wearing a sleek futuristic pro-headset", "yellow body, expressive face"),
     "나노 (오피스룩)": ("Cute anthropomorphic Banana character named 'Nano', wearing a formal suit and glasses", "office worker vibe"),
@@ -38,7 +36,6 @@ CHAR_DEFAULTS = {
     "직접 입력 (Custom)": ("", "")
 }
 
-# [조연] 총 15종
 SIDEKICK_DEFAULTS = {
     "작은 새 (Bird)": "tiny cute blue bird friend",
     "아기 고양이 (Kitten)": "tiny yellow kitten friend",
@@ -83,14 +80,68 @@ def update_sidekick_defaults():
         st.session_state.sidekick_desc_input = SIDEKICK_DEFAULTS[selected]
 
 # ==========================================
-# 4. 스마트 템플릿 로직 (규칙 기반)
+# 4. Gemini 시나리오 생성 로직
 # ==========================================
-def generate_smart_template(topic):
+def generate_gemini_story(api_key, theme, content):
+    """Gemini API를 호출하여 10컷 시나리오를 생성합니다."""
+    
+    # 1. API 설정
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash') # 빠르고 효율적인 모델 사용
+
+    # 2. 프롬프트 작성
+    prompt = f"""
+    You are a professional webtoon writer.
+    Create a funny and relatable 10-cut storyboard based on the user's Theme and Content.
+    
+    Theme: {theme}
+    Content/Topic: {content}
+    
+    [Rules]
+    1. Create exactly 10 cuts.
+    2. 'Action' must be in English (visual description for AI image generator).
+    3. 'Dialogue' must be in Korean (short and punchy).
+    4. Output format must be strictly separated by pipes (|) like this:
+    Cut 1|Action description|Dialogue
+    Cut 2|Action description|Dialogue
+    ...
+    
+    Make the story have a clear beginning, middle (crisis), and end (twist or happy ending).
     """
-    사용자가 입력한 주제(topic)를 기승전결 구조 템플릿에 끼워넣어 반환합니다.
-    """
+
+    try:
+        # 3. Gemini에게 요청
+        response = model.generate_content(prompt)
+        text_data = response.text
+
+        # 4. 결과 파싱 (텍스트 -> 리스트 변환)
+        parsed_data = []
+        lines = text_data.strip().split('\n')
+        
+        for line in lines:
+            # 파이프(|)가 있고 Cut이라는 단어가 있는 줄만 처리
+            if "|" in line and "Cut" in line:
+                parts = line.split('|')
+                if len(parts) >= 3:
+                    cut_num = parts[0].strip().replace("Cut ", "").replace("*", "") # 숫자만 추출
+                    action = parts[1].strip()
+                    text = parts[2].strip()
+                    parsed_data.append({"Cut": cut_num, "Action": action, "Text": text})
+        
+        # 파싱 실패 시 예외 처리
+        if not parsed_data:
+            return generate_template_story(content)
+            
+        return parsed_data[:10] # 10개만 보장
+
+    except Exception as e:
+        st.error(f"Gemini 연결 오류: {e}")
+        return generate_template_story(content) # 에러나면 기본 템플릿 사용
+
+# [Fallback] API 키가 없거나 에러 날 때 쓰는 템플릿
+def generate_template_story(topic):
     return [
-        {"Cut": 1, "Action": f"holding title card '{topic}', confident pose", "Text": f"오늘의 주제:\n{topic}"},
+        {"Cut": 1, "Action": f"holding title card '{topic}', confident pose", "Text": f"주제:\n{topic}"},
         {"Cut": 2, "Action": "walking happily, full of expectation", "Text": "시작해볼까!"},
         {"Cut": 3, "Action": f"facing the situation of {topic}", "Text": "어라? 이게 뭐지?"},
         {"Cut": 4, "Action": "concentrating deeply on the task", "Text": "집중..."},
@@ -160,6 +211,12 @@ def build_prompts(rows, cfeat, coutfit, style_name, layout, lang, seed, use_side
 # ==========================================
 
 # --- 사이드바 ---
+st.sidebar.header("💎 Gemini API 설정")
+gemini_api_key = st.sidebar.text_input("Google Gemini API Key", type="password", placeholder="AI Studio에서 받은 키 입력")
+st.sidebar.caption("키가 없으면 '기본 템플릿'으로 동작합니다.")
+st.sidebar.markdown("[👉 API Key 발급받기 (Google AI Studio)](https://aistudio.google.com/app/apikey)")
+st.sidebar.divider()
+
 st.sidebar.header("1️⃣ 캐릭터 설정")
 char_type = st.sidebar.selectbox("주인공 선택", list(CHAR_DEFAULTS.keys()), key="char_type_selector", on_change=update_char_defaults)
 
@@ -169,19 +226,16 @@ if 'char_outfit_input' not in st.session_state: st.session_state.char_outfit_inp
 char_feature = st.sidebar.text_input("외모/종족 특징", key="char_feature_input")
 char_outfit = st.sidebar.text_input("의상/스타일", key="char_outfit_input")
 
-# 조연 설정
 with st.sidebar.expander("👥 조연(Sidekick) 추가"):
     use_sidekick = st.checkbox("조연 등장시키기", value=False)
     
     if use_sidekick:
         sidekick_type = st.selectbox("조연 유형", list(SIDEKICK_DEFAULTS.keys()), key="sidekick_selector", on_change=update_sidekick_defaults)
         
-        # 직접 입력
         custom_sidekick_species = ""
         if sidekick_type == "직접 입력 (Custom)":
             custom_sidekick_species = st.text_input("조연 종족 입력", "Baby Elephant")
 
-        # 묘사 (자동 채움)
         if 'sidekick_desc_input' not in st.session_state:
             st.session_state.sidekick_desc_input = SIDEKICK_DEFAULTS.get("작은 새 (Bird)", "")
             
@@ -203,29 +257,39 @@ text_lang = st.sidebar.radio("말풍선 언어", ["한국어", "영어", "없음
 seed_num = st.sidebar.number_input("시드(Seed)", value=1234)
 
 # --- 메인 화면 ---
-st.subheader("📝 주제 입력 & 시나리오 편집")
+st.subheader("🤖 Gemini 스토리 생성기")
 
-col1, col2 = st.columns([0.7, 0.3])
+# 입력창 배치
+col1, col2, col3 = st.columns([0.3, 0.5, 0.2])
 with col1:
-    topic_input = st.text_input("어떤 이야기를 만들까요?", value="편의점 알바 첫 출근")
+    theme_input = st.selectbox("이야기 테마", ["일상/공감", "개그/코믹", "감동/힐링", "정보/꿀팁", "여행", "연애", "공포", "판타지"])
 with col2:
+    content_input = st.text_input("상세 내용 (주제)", value="편의점 알바 첫 출근 실수담")
+with col3:
     st.write("") 
     st.write("")
-    if st.button("✨ 시나리오 초안 생성", type="primary"):
-        st.session_state.scenario_rows = generate_smart_template(topic_input)
-        st.toast("시나리오 초안이 생성되었습니다! 아래 표를 수정하세요.")
+    if st.button("✨ Gemini로 생성", type="primary"):
+        if gemini_api_key:
+            with st.spinner("Gemini가 시나리오를 쓰고 있습니다..."):
+                st.session_state.scenario_rows = generate_gemini_story(gemini_api_key, theme_input, content_input)
+                st.toast("Gemini가 시나리오를 완성했습니다! 💎")
+        else:
+            st.session_state.scenario_rows = generate_template_story(content_input)
+            st.toast("API Key가 없어 기본 템플릿으로 생성되었습니다.")
 
+# 초기값 설정
 if 'scenario_rows' not in st.session_state:
-    st.session_state.scenario_rows = generate_smart_template("편의점 알바 첫 출근")
+    st.session_state.scenario_rows = generate_template_story("편의점 알바 첫 출근")
 
 # 에디터
+st.markdown("### 🎬 시나리오 편집")
 edited_rows = st.data_editor(
     st.session_state.scenario_rows,
     num_rows="fixed",
     column_config={
         "Cut": st.column_config.NumberColumn("컷", disabled=True, width="small"),
-        "Action": st.column_config.TextColumn("행동 (영어 권장)", width="large"),
-        "Text": st.column_config.TextColumn("대사", width="medium"),
+        "Action": st.column_config.TextColumn("행동 (영어)", width="large"),
+        "Text": st.column_config.TextColumn("대사 (한국어)", width="medium"),
     },
     hide_index=True,
     use_container_width=True
