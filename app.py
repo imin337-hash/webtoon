@@ -214,4 +214,88 @@ seed_num = st.sidebar.number_input("시드(Seed)", value=1234)
 # ==========================================
 # 6. 프롬프트 생성 로직 (한글 최적화 적용)
 # ==========================================
-def make_prompts(mode, ctype, cspec
+def make_prompts(mode, ctype, cspec, cfeat, coutfit, theme, detail, layout, style_name, lang, seed):
+    
+    if ctype == "직접 입력 (Custom)": species = cspec
+    else: species = ctype.split("(")[1].replace(")", "")
+    
+    if species in ["Cat", "Dog", "Rabbit", "Bear", "Hamster", "Tiger"]: base_char = f"Cute anthropomorphic {species} character"
+    else: base_char = f"Cute {species} character"
+    
+    full_char_desc = f"{base_char}, {cfeat}, wearing {coutfit}, expressive face"
+    style_kw = ART_STYLE_MAP[style_name]
+    
+    if "다이내믹" in layout: angle_kw = "dynamic dutch angle, action lines"
+    elif "셀카" in layout: angle_kw = "holding smartphone camera, selfie angle, face focus"
+    elif "1인칭" in layout: angle_kw = "first-person point of view (POV), hands visible"
+    elif "항공" in layout: angle_kw = "bird's-eye view, top-down shot"
+    elif "로우" in layout: angle_kw = "low angle shot, looking up"
+    elif "어안" in layout: angle_kw = "fish-eye lens effect"
+    elif "실루엣" in layout: angle_kw = "silhouette, backlighting"
+    elif "아이소메트릭" in layout: angle_kw = "isometric view, 3D cute game style"
+    elif "시네마틱" in layout: angle_kw = "cinematic lighting, depth of field"
+    else: angle_kw = "flat composition, symmetrical balance, eye-level shot"
+
+    if "단일" in mode:
+        mode_kw = "single panel, independent illustration, full shot, one image"
+        neg_kw = "--no comic grid, storyboard, multiple panels, split view"
+    else:
+        mode_kw = "character sheet, multiple poses"
+        neg_kw = ""
+
+    scenarios = get_deep_story(theme, detail)
+    prompts = []
+    context_str = f"Story about {detail}"
+
+    for action, ko, en in scenarios:
+        # [핵심 수정] 한글 생성 성공률 높이는 프롬프트 엔지니어링
+        if "한국어" in lang: 
+            # 1. 'manhwa speech bubble' 추가
+            # 2. 'legible font' (읽기 쉬운 폰트) 추가
+            # 3. 텍스트를 두 번 강조
+            text_p = f'speech bubble with text "{ko}", written in legible Korean Hangul font, manhwa style speech bubble'
+        elif "영어" in lang: 
+            text_p = f'speech bubble with text "{en}", written in English comic font'
+        else: 
+            text_p = "no text"
+
+        p = f"/imagine prompt: **[Story]** {context_str} **[Subject]** {full_char_desc} **[Action]** {action} **[Text]** {text_p} **[Style]** {style_kw}, {angle_kw}, {mode_kw} --ar 4:5 --niji 6 --seed {seed} {neg_kw}"
+        prompts.append(p)
+
+    return prompts, scenarios
+
+# ==========================================
+# 7. 결과 출력 UI
+# ==========================================
+if 'generated_prompts' not in st.session_state:
+    st.session_state.generated_prompts = []
+    st.session_state.current_scenarios = []
+
+if st.button("🚀 감성 100% 마이툰 생성하기 (Click)"):
+    with st.spinner(f"'{st.session_state.story_detail_input}' 이야기를 만드는 중..."):
+        prompts, scenes = make_prompts(
+            output_mode, char_type, custom_species, char_feature, char_outfit, 
+            story_theme, st.session_state.story_detail_input, layout_mode, selected_style_name, text_lang, seed_num
+        )
+        st.session_state.generated_prompts = prompts
+        st.session_state.current_scenarios = scenes
+
+if st.session_state.generated_prompts:
+    st.divider()
+    st.success(f"✅ 생성 완료! (주제: {st.session_state.story_detail_input})")
+    
+    # [복사 기능]
+    st.subheader("📋 전체 프롬프트 한 번에 복사하기")
+    st.warning("⚠️ 주의: 한 번에 붙여넣으면 1컷만 나옵니다. 보관용으로만 쓰세요.")
+    all_text = "\n\n".join(st.session_state.generated_prompts)
+    st.code(all_text, language="markdown")
+    
+    st.divider()
+
+    st.subheader("✂️ 컷별 상세 확인 & 복사")
+    st.caption("👇 제목을 확인하고, 아래 박스의 📄 아이콘을 눌러 복사하세요.")
+
+    for i, p in enumerate(st.session_state.generated_prompts):
+        scene_txt = st.session_state.current_scenarios[i][1] if "한국어" in text_lang else st.session_state.current_scenarios[i][2]
+        st.markdown(f"#### 🎞️ Cut {i+1}: {scene_txt}")
+        st.code(p, language="markdown")
