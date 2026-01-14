@@ -1,22 +1,22 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 import random
-from openai import OpenAI  # OpenAI 라이브러리 추가
 
 # 1. 페이지 설정
-st.set_page_config(page_title="마이툰: AI 시나리오 작가", page_icon="🎨", layout="wide")
+st.set_page_config(page_title="마이툰: 하이브리드 에디터", page_icon="🎨", layout="wide")
 
 # 2. 헤더
-st.title("🎨 마이툰(MyToon): AI 시나리오 작가 & 프롬프트 생성")
+st.title("🎨 마이툰(MyToon): 하이브리드 스토리 에디터")
 st.markdown("""
-**1. API 연결:** OpenAI API Key를 입력하면 AI가 **진짜 스토리**를 창작해줍니다. (없으면 기본 템플릿 사용)
-**2. 주제 입력:** "좀비가 나타난 학교", "복권 1등 당첨" 등 자유롭게 적어보세요.
-**3. 결과 수정:** AI가 쓴 시나리오를 내 입맛대로 수정하고 프롬프트로 변환하세요.
+**방식 1. 테마 선택:** 검증된 인기 테마(일상, 여행 등)의 시나리오를 불러옵니다.
+**방식 2. 주제 입력:** 원하는 주제를 입력하면 AI가 새로운 시나리오를 짜줍니다.
+**결과 수정:** 생성된 시나리오는 아래 표에서 자유롭게 수정할 수 있습니다.
 """)
 
 # ==========================================
 # 3. 데이터 및 설정
 # ==========================================
+
 CHAR_DEFAULTS = {
     "나노바나나 (Original)": ("Cute anthropomorphic Banana character named 'Nano', wearing a sleek futuristic pro-headset", "yellow body, expressive face"),
     "나노 (오피스룩)": ("Cute anthropomorphic Banana character named 'Nano', wearing a formal suit and glasses", "office worker vibe"),
@@ -55,80 +55,102 @@ def update_char_defaults():
         st.session_state.char_outfit_input = CHAR_DEFAULTS[selected][1]
 
 # ==========================================
-# 4. 시나리오 생성 로직 (Real AI vs Template)
+# 4. 시나리오 생성 로직 (두 가지 방식)
 # ==========================================
 
-# [Logic A] 진짜 AI (GPT)를 이용한 창작
-def generate_ai_story(api_key, topic):
-    client = OpenAI(api_key=api_key)
-    
-    # 프롬프트 설계 (AI에게 포맷을 지시)
-    system_prompt = """
-    You are a creative webtoon writer. 
-    Create a funny and relatable 10-cut storyboard based on the user's topic.
-    Format your response EXACTLY like this line by line (Use '|' to separate):
-    Cut 1|Action Description (in English)|Dialogue (in Korean)
-    Cut 2|Action Description (in English)|Dialogue (in Korean)
-    ...
-    Cut 10|Action Description (in English)|Dialogue (in Korean)
-    
-    Keep the action description simple for image generation.
-    Keep the dialogue short and funny.
-    """
-    
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo", # 비용이 저렴하고 빠른 모델
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Topic: {topic}"}
-            ]
-        )
-        content = response.choices[0].message.content
-        
-        # 텍스트 파싱 (AI의 응답을 표 데이터로 변환)
-        parsed_data = []
-        lines = content.strip().split('\n')
-        for line in lines:
-            if "|" in line and "Cut" in line:
-                parts = line.split('|')
-                if len(parts) >= 3:
-                    cut_num = parts[0].strip().replace("Cut ", "")
-                    action = parts[1].strip()
-                    text = parts[2].strip()
-                    parsed_data.append({"Cut": cut_num, "Action": action, "Text": text})
-        
-        # 만약 파싱 실패 시 기본값 반환
-        if not parsed_data:
-            return generate_template_story(topic)
-            
-        return parsed_data[:10] # 10개만 보장
+# [방식 A] 테마별 고정 템플릿 (Theme Presets)
+def get_theme_preset(theme):
+    if theme == "일상 공감":
+        return [
+            {"Cut": 1, "Action": "posing lazily on sofa, holding phone", "Text": "주말 순삭"},
+            {"Cut": 2, "Action": "looking at clock, shocked face", "Text": "벌써 저녁?!"},
+            {"Cut": 3, "Action": "opening fridge, empty inside", "Text": "먹을 게 없네.."},
+            {"Cut": 4, "Action": "scrolling delivery app on phone", "Text": "배달 시킬까?"},
+            {"Cut": 5, "Action": "looking at expensive delivery fee", "Text": "배달비 실화?"},
+            {"Cut": 6, "Action": "cooking ramen instead, boiling pot", "Text": "라면이나 먹자"},
+            {"Cut": 7, "Action": "spilling soup on table, disaster", "Text": "앗 뜨거!"},
+            {"Cut": 8, "Action": "cleaning up mess, crying face", "Text": "내 주말 돌려줘"},
+            {"Cut": 9, "Action": "eating ramen finally, happy face", "Text": "그래도 맛있다"},
+            {"Cut": 10, "Action": "lying in bed, peaceful", "Text": "내일은 월요일.."}
+        ]
+    elif theme == "여행/휴가":
+        return [
+            {"Cut": 1, "Action": "packing suitcase with excitement", "Text": "여행 D-Day!"},
+            {"Cut": 2, "Action": "running at airport with passport", "Text": "공항 도착!"},
+            {"Cut": 3, "Action": "looking out airplane window", "Text": "구름 위둥둥"},
+            {"Cut": 4, "Action": "arriving at destination, wide view", "Text": "우와 대박!"},
+            {"Cut": 5, "Action": "eating exotic local food", "Text": "현지의 맛"},
+            {"Cut": 6, "Action": "taking selfie with landmark", "Text": "인생샷 건짐"},
+            {"Cut": 7, "Action": "getting lost, looking at map confused", "Text": "여긴 어디?"},
+            {"Cut": 8, "Action": "local helping with directions, smiling", "Text": "친절해라"},
+            {"Cut": 9, "Action": "watching sunset on beach", "Text": "힐링 그 자체"},
+            {"Cut": 10, "Action": "waving goodbye with souvenir", "Text": "또 올게!"}
+        ]
+    elif theme == "성장/도전":
+        return [
+            {"Cut": 1, "Action": "wearing headband, determined look", "Text": "오늘부터 갓생!"},
+            {"Cut": 2, "Action": "making a plan list on notebook", "Text": "계획은 완벽해"},
+            {"Cut": 3, "Action": "starting to work out or study hard", "Text": "시작이 반이다"},
+            {"Cut": 4, "Action": "feeling tired, sweating profusely", "Text": "벌써 힘들어.."},
+            {"Cut": 5, "Action": "temptation appearing (game or snack)", "Text": "조금만 쉴까?"},
+            {"Cut": 6, "Action": "shaking head, refusing temptation", "Text": "안돼! 참자!"},
+            {"Cut": 7, "Action": "focusing deeply again, burning eyes", "Text": "집중! 집중!"},
+            {"Cut": 8, "Action": "achieving small goal, sparkling effect", "Text": "해냈다!"},
+            {"Cut": 9, "Action": "flexing arm or holding trophy", "Text": "뿌듯함"},
+            {"Cut": 10, "Action": "thumbs up to camera", "Text": "너도 할 수 있어"}
+        ]
+    elif theme == "연애/사랑":
+        return [
+            {"Cut": 1, "Action": "checking phone nervous face", "Text": "연락 올 때 됐는데"},
+            {"Cut": 2, "Action": "phone ringing, happy surprise", "Text": "왔다!!"},
+            {"Cut": 3, "Action": "getting ready, choosing clothes", "Text": "뭐 입지?"},
+            {"Cut": 4, "Action": "meeting partner, shy smile", "Text": "안녕?"},
+            {"Cut": 5, "Action": "drinking coffee at cafe together", "Text": "분위기 좋다"},
+            {"Cut": 6, "Action": "small misunderstanding, pouting", "Text": "흥!"},
+            {"Cut": 7, "Action": "partner giving flowers or apologizing", "Text": "미안해~"},
+            {"Cut": 8, "Action": "smiling brightly, holding hands", "Text": "금방 풀림"},
+            {"Cut": 9, "Action": "walking in sunset silhouette", "Text": "함께라서 좋아"},
+            {"Cut": 10, "Action": "blowing a heart kiss", "Text": "사랑해"}
+        ]
+    elif theme == "공포/미스터리":
+        return [
+            {"Cut": 1, "Action": "lying in bed at night, dark room", "Text": "잠이 안 와"},
+            {"Cut": 2, "Action": "hearing creaking sound", "Text": "무슨 소리지?"},
+            {"Cut": 3, "Action": "looking at the closet door", "Text": "저기 누구 있어?"},
+            {"Cut": 4, "Action": "shadow moving slowly", "Text": "움직였다!"},
+            {"Cut": 5, "Action": "hiding under blanket shaking", "Text": "살려주세요"},
+            {"Cut": 6, "Action": "gathering courage holding flashlight", "Text": "확인해보자"},
+            {"Cut": 7, "Action": "opening the closet door quickly", "Text": "에잇!"},
+            {"Cut": 8, "Action": "revealing a cute cat inside", "Text": "야옹?"},
+            {"Cut": 9, "Action": "sigh of relief wiping sweat", "Text": "너였구나.."},
+            {"Cut": 10, "Action": "hugging cat, sleeping", "Text": "다행이다"}
+        ]
+    else: # 기본
+        return generate_custom_draft(f"{theme} 이야기")
 
-    except Exception as e:
-        st.error(f"AI 생성 중 오류가 발생했습니다: {e}")
-        return generate_template_story(topic) # 에러나면 템플릿 사용
-
-# [Logic B] 기존 템플릿 (규칙 기반) - API 키 없을 때
-def generate_template_story(topic):
+# [방식 B] 커스텀 주제 입력 (Custom Prompt Logic)
+def generate_custom_draft(topic):
+    """주제를 입력받아 AI가 10컷을 창작하는 로직 (템플릿 엔진)"""
     return [
         {"Cut": 1, "Action": f"holding title card '{topic}', confident", "Text": f"주제:\n{topic}"},
-        {"Cut": 2, "Action": "walking happily, full of expectation", "Text": "시작해볼까!"},
-        {"Cut": 3, "Action": f"facing situation of {topic}", "Text": "어라?"},
-        {"Cut": 4, "Action": "concentrating deeply", "Text": "집중..."},
-        {"Cut": 5, "Action": "sudden problem occurring, shocked", "Text": "앗!! 실수!"},
-        {"Cut": 6, "Action": "feeling frustrated, messy background", "Text": "망했다..."},
-        {"Cut": 7, "Action": "lightbulb appearing, idea", "Text": "잠깐! 좋은 생각!"},
-        {"Cut": 8, "Action": f"solving {topic} actively", "Text": "다시 도전!"},
-        {"Cut": 9, "Action": "success moment, happy smile", "Text": "완벽해!"},
-        {"Cut": 10, "Action": "waving goodbye, subscribe button", "Text": "다들 화이팅!"}
+        {"Cut": 2, "Action": "intro scene, walking or sitting", "Text": "시작!"},
+        {"Cut": 3, "Action": f"facing situation related to {topic}", "Text": "어라?"},
+        {"Cut": 4, "Action": "trying to do something, focused", "Text": "열심 열심"},
+        {"Cut": 5, "Action": "problem occuring, shocked face", "Text": "앗! 문제 발생"},
+        {"Cut": 6, "Action": "feeling sad or confused", "Text": "어떡하지.."},
+        {"Cut": 7, "Action": "having a brilliant idea, lightbulb", "Text": "좋은 생각!"},
+        {"Cut": 8, "Action": f"solving {topic} problem actively", "Text": "해결해보자"},
+        {"Cut": 9, "Action": "success moment, happy celebration", "Text": "성공!"},
+        {"Cut": 10, "Action": "waving goodbye, happy ending", "Text": "안녕~"}
     ]
 
 # ==========================================
-# 5. 프롬프트 빌더
+# 5. 프롬프트 생성 (빌더)
 # ==========================================
-def build_prompts(rows, cfeat, coutfit, style_name, layout, lang, seed, use_side, side_desc, panel_mode):
+def build_prompts(rows, ctype, cfeat, coutfit, style_name, layout, lang, seed, use_side, side_desc, panel_mode):
     full_char = f"{cfeat}, wearing {coutfit}, expressive face"
     if use_side: full_char += f", accompanied by {side_desc}"
+
     style_kw = ART_STYLE_MAP[style_name]
     
     # 레이아웃 매핑
@@ -151,22 +173,23 @@ def build_prompts(rows, cfeat, coutfit, style_name, layout, lang, seed, use_side
         mode_kw = "single panel, independent illustration, full shot, one image, no borders"
         neg_kw = "--no comic grid, storyboard, multiple panels, split view"
     elif "2컷" in panel_mode:
-        mode_kw = "2 panel comic strip, vertical layout"
+        mode_kw = "2 panel comic strip, vertical layout, top and bottom panels"
         neg_kw = "--no 4 panel grid, single image"
     elif "3컷" in panel_mode:
         mode_kw = "3 panel comic strip, vertical webtoon layout"
         neg_kw = "--no single image, 4 panel grid"
     elif "4컷" in panel_mode:
-        mode_kw = "4 panel comic, 2x2 grid layout"
+        mode_kw = "4 panel comic, 2x2 grid layout, four distinct scenes"
         neg_kw = "--no single image, vertical strip"
     else:
-        mode_kw = "character sheet, multiple poses, white background"
+        mode_kw = "character sheet, multiple poses, expression sheet, white background"
         neg_kw = ""
 
     prompts = []
     for row in rows:
         action = row["Action"]
         text = row["Text"]
+        
         if lang == "한국어": text_p = f'speech bubble with text "{text}", written in legible Korean Hangul font, manhwa style speech bubble'
         elif lang == "영어": text_p = f'speech bubble with text "{text}", written in English comic font'
         else: text_p = "no text"
@@ -180,11 +203,6 @@ def build_prompts(rows, cfeat, coutfit, style_name, layout, lang, seed, use_side
 # ==========================================
 
 # --- 사이드바 ---
-st.sidebar.header("🔑 API 설정 (선택사항)")
-api_key = st.sidebar.text_input("OpenAI API Key (GPT 사용)", type="password", placeholder="sk-...")
-st.sidebar.caption("키가 없으면 '기본 템플릿' 모드로 동작합니다.")
-st.sidebar.divider()
-
 st.sidebar.header("1️⃣ 캐릭터 설정")
 char_type = st.sidebar.selectbox("주인공 선택", list(CHAR_DEFAULTS.keys()), key="char_type_selector", on_change=update_char_defaults)
 if 'char_feature_input' not in st.session_state: st.session_state.char_feature_input = CHAR_DEFAULTS["나노바나나 (Original)"][0]
@@ -205,50 +223,65 @@ panel_choice = st.sidebar.selectbox("🎞️ 1장당 컷 수", ["1컷 (추천)",
 text_lang = st.sidebar.radio("말풍선 언어", ["한국어", "영어", "없음"])
 seed_num = st.sidebar.number_input("시드(Seed)", value=1234)
 
-# --- 메인 화면 ---
-st.subheader("🤖 스토리 생성기")
+# --- 메인 화면: 스토리 모드 선택 ---
+st.subheader("📝 스토리 시나리오 설정")
 
-col1, col2 = st.columns([0.7, 0.3])
-with col1:
-    topic_input = st.text_input("어떤 이야기를 만들까요?", value="편의점 알바 첫 출근")
-with col2:
-    st.write("") 
-    st.write("")
-    if st.button("✨ AI 시나리오 작성", type="primary"):
-        if api_key:
-            with st.spinner("GPT가 창의적인 이야기를 쓰고 있습니다..."):
-                st.session_state.scenario_rows = generate_ai_story(api_key, topic_input)
-                st.toast("AI 모드로 생성되었습니다! 🤖")
-        else:
-            st.session_state.scenario_rows = generate_template_story(topic_input)
-            st.toast("기본 템플릿 모드로 생성되었습니다. (API Key 없음) 📝")
+# 탭을 사용하여 두 가지 방식을 구분
+tab1, tab2 = st.tabs(["📚 테마 선택 (추천)", "✍️ 직접 입력 (커스텀)"])
 
+# 세션 상태 초기화
 if 'scenario_rows' not in st.session_state:
-    st.session_state.scenario_rows = generate_template_story("편의점 알바 첫 출근")
+    st.session_state.scenario_rows = get_theme_preset("일상 공감")
 
-# 에디터
-st.markdown("### 🎬 시나리오 편집")
+with tab1:
+    col_t1, col_t2 = st.columns([0.7, 0.3])
+    with col_t1:
+        selected_theme = st.selectbox("원하는 테마를 선택하세요", ["일상 공감", "여행/휴가", "성장/도전", "연애/사랑", "공포/미스터리"])
+    with col_t2:
+        st.write("")
+        st.write("")
+        if st.button("📥 테마 불러오기", type="primary"):
+            st.session_state.scenario_rows = get_theme_preset(selected_theme)
+            st.rerun() # 화면 갱신
+
+with tab2:
+    col_c1, col_c2 = st.columns([0.7, 0.3])
+    with col_c1:
+        custom_topic = st.text_input("만들고 싶은 이야기 주제 (예: 좀비 사태)", value="복권 당첨")
+    with col_c2:
+        st.write("")
+        st.write("")
+        if st.button("✨ 새 시나리오 생성", type="primary"):
+            st.session_state.scenario_rows = generate_custom_draft(custom_topic)
+            st.rerun() # 화면 갱신
+
+st.divider()
+
+# --- 시나리오 에디터 (공통) ---
+st.markdown("### 🎬 시나리오 편집기")
+st.caption("아래 표에서 행동(Action)과 대사(Text)를 자유롭게 수정한 뒤 '프롬프트 생성'을 누르세요.")
+
 edited_rows = st.data_editor(
     st.session_state.scenario_rows,
     num_rows="fixed",
     column_config={
         "Cut": st.column_config.NumberColumn("컷", disabled=True, width="small"),
-        "Action": st.column_config.TextColumn("행동 (영어)", width="large"),
-        "Text": st.column_config.TextColumn("대사", width="medium"),
+        "Action": st.column_config.TextColumn("행동 묘사 (영어 권장)", width="large"),
+        "Text": st.column_config.TextColumn("말풍선 대사", width="medium"),
     },
     hide_index=True,
     use_container_width=True
 )
 
 st.write("")
-if st.button("🚀 프롬프트 변환하기 (Click)", type="primary", use_container_width=True):
+if st.button("🚀 프롬프트 생성하기 (Click)", type="primary", use_container_width=True):
     final_prompts = build_prompts(
-        edited_rows, char_feature, char_outfit, 
+        edited_rows, char_type, char_feature, char_outfit, 
         style_name, layout_mode, text_lang, seed_num, use_sidekick, sidekick_desc, panel_choice
     )
     st.session_state.final_prompts = final_prompts
 
-# 결과 출력
+# --- 결과 출력 ---
 if 'final_prompts' in st.session_state and st.session_state.final_prompts:
     st.divider()
     st.success("✅ 프롬프트 생성 완료!")
