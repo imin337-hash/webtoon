@@ -269,7 +269,7 @@ with col3:
     st.write("") 
     st.write("")
     if st.button("✨ Gemini로 생성", type="primary"):
-        if gemini_api_key:
+        if gemini_api_key: AIzaSyBbp8VWrG0TjKu-ErlihJy9JHfvlpicrow
             with st.spinner("Gemini가 시나리오를 쓰고 있습니다..."):
                 st.session_state.scenario_rows = generate_gemini_story(gemini_api_key, theme_input, content_input)
                 st.toast("Gemini가 시나리오를 완성했습니다! 💎")
@@ -317,3 +317,4 @@ if 'final_prompts' in st.session_state and st.session_state.final_prompts:
         current_text = edited_rows[i]["Text"]
         st.markdown(f"#### 🎞️ Cut {i+1}: {current_text}")
         st.code(p, language="markdown")
+
