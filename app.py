@@ -3,24 +3,25 @@ import streamlit as st
 import random
 
 # 1. 페이지 설정
-st.set_page_config(page_title="마이툰: AI 인스타툰 메이커", page_icon="🎨", layout="wide")
+st.set_page_config(page_title="마이툰: 시나리오 에디터", page_icon="🎨", layout="wide")
 
 # 2. 헤더
-st.title("🎨 마이툰(MyToon): 조연 & 자동 생성 기능 탑재")
+st.title("🎨 마이툰(MyToon): 커스텀 시나리오 에디터")
 st.markdown("""
-**주연과 조연**이 함께 만드는 이야기! 
-맨 아래 **[⚡ 원클릭 자동 생성 코드]**를 사용하면 10컷이 한 번에 만들어집니다.
+**1. 주제 입력:** 원하는 이야기 주제를 쓰면 10컷 시나리오가 자동 생성됩니다.
+**2. 내용 수정:** 표에서 행동(Action)과 대사(Text)를 자유롭게 고치세요.
+**3. 컷 수 선택:** 1장에 **1컷 / 2컷 / 4컷** 중 원하는 구성을 선택하세요.
 """)
 
 # ==========================================
-# 3. 데이터 및 헬퍼 함수
+# 3. 데이터 및 설정
 # ==========================================
 
 CHAR_DEFAULTS = {
+    "나노바나나 (Original)": ("Cute anthropomorphic Banana character named 'Nano', wearing a sleek futuristic pro-headset", "yellow body, expressive face"),
+    "나노 (오피스룩)": ("Cute anthropomorphic Banana character named 'Nano', wearing a formal suit and glasses", "office worker vibe"),
     "고양이 (Cat)": ("white fur, pointy ears, pink nose", "red ribbon collar"),
     "강아지 (Dog)": ("golden curly fur, floppy ears", "green scarf"),
-    "토끼 (Rabbit)": ("long ears, fluffy white fur", "cute pink dress"),
-    "곰 (Bear)": ("brown fur, round ears, teddy bear look", "striped t-shirt"),
     "사람-여자 (Girl)": ("long brown hair, cute face, k-pop style", "pastel hoodie, denim skirt"),
     "사람-남자 (Boy)": ("short black hair, casual look, glasses", "oversized sweatshirt, cargo pants"),
     "직접 입력 (Custom)": ("", "")
@@ -32,19 +33,6 @@ SIDEKICK_DEFAULTS = {
     "로봇 (Robot)": "mini floating robot friend",
     "유령 (Ghost)": "cute marshmallow ghost friend",
     "사람 친구 (Friend)": "best friend character wearing casual clothes"
-}
-
-THEME_IDEAS = {
-    "일상": ["아무것도 안 했는데 벌써 밤", "다이어트 결심하고 야식 먹음", "월급 스치고 지나감", "미용실에서 머리 망했을 때"],
-    "성장": ["남들과 비교되어 우울할 때", "작심삼일 극복하기", "처음으로 혼자 해낸 일", "서툴러도 괜찮아"],
-    "꿀팁": ["자취생 식비 아끼는 법", "사진 똥손 탈출하기", "면접 긴장 푸는 법", "여행 짐 싸기 만렙"],
-    "감동": ["힘든 하루 끝의 위로", "무지개다리 건넌 반려동물", "오랜 친구의 전화 한 통", "나에게 주는 선물"],
-    "여행": ["P의 좌충우돌 여행기", "혼자 떠난 여행의 묘미", "여행지에서 만난 인연", "돌아오기 싫은 순간"],
-    "연애": ["썸 탈 때의 미묘한 기류", "장거리 연애의 애틋함", "사소한 걸로 싸우고 화해", "권태기 극복"],
-    "공포": ["엘리베이터 거울 괴담", "자취방 낯선 소리", "야근 중 사무실 귀신", "중고거래 괴담"],
-    "리뷰": ["광고 보고 샀다가 후회한 템", "삶의 질 수직 상승템", "편의점 신상 솔직 후기", "내돈내산 찐추천"],
-    "요리": ["지옥에서 온 요리(실패)", "엄마 레시피 도전", "배달보다 맛있는 집밥", "자취 요리왕"],
-    "덕질": ["최애가 나를 봤을 때", "티켓팅 광탈의 슬픔", "굿즈 사려고 오픈런", "휴덕은 있어도 탈덕은 없다"]
 }
 
 ART_STYLE_MAP = {
@@ -61,184 +49,39 @@ ART_STYLE_MAP = {
 }
 
 def update_char_defaults():
-    selected_type = st.session_state.char_type_selector
-    defaults = CHAR_DEFAULTS.get(selected_type, ("", ""))
-    st.session_state.char_feature_input = defaults[0]
-    st.session_state.char_outfit_input = defaults[1]
-
-def generate_random_idea():
-    current_theme_key = next((k for k in THEME_IDEAS.keys() if k in st.session_state.theme_selector), "일상")
-    idea = random.choice(THEME_IDEAS[current_theme_key])
-    st.session_state.story_detail_input = idea
-
-def get_deep_story(theme, detail):
-    # 한글 대사 최적화 (2~4글자)
-    if "일상" in theme:
-        return [
-            (f"posing confidently with text '{detail}'", "목표!", f"Goal: {detail}"),
-            ("full of energy, fists clenched", "가자!", "Motivated!"),
-            ("looking at clock", "벌써?", "Wait..."),
-            ("lying on sofa, messy room", "휴식", "Rest"),
-            ("scrolling phone zombie face", "폰질", "Scrolling"),
-            ("looking at window, night", "밤이야?", "Night?!"),
-            ("head hitting the desk", "망함", "Ruined"),
-            ("eating late night snack", "냠냠", "Yum"),
-            ("lying in bed", "자자", "Sleep"),
-            ("waving goodbye", "공감?", "Relatable?")
-        ]
-    elif "성장" in theme:
-        return [
-            (f"worried face, concept {detail}", "고민", "Worry"),
-            ("seeing others succeed", "부럽다", "Envy"),
-            ("trying hard, sweating", "끙끙", "Hard"),
-            ("sitting in corner, shadow", "우울", "Sad"),
-            ("friend approaching", "토닥토닥", "Comfort"),
-            ("receiving coffee", "힘내", "Cheer up"),
-            ("wiping tears", "다시!", "Again"),
-            ("focusing deeply", "성공!", "Success"),
-            ("smiling brightly", "뿌듯", "Proud"),
-            ("making heart hand", "응원해", "Love U")
-        ]
-    elif "여행" in theme:
-        return [
-            ("packing suitcase chaos", "짐 싸기", "Packing"),
-            ("running, sweating", "지각!", "Late!"),
-            ("looking at map lost", "어디지?", "Lost"),
-            ("sudden rain", "비?!", "Rain?!"),
-            ("finding nice view", "우와", "Wow"),
-            ("drinking coffee with view", "좋다", "Good"),
-            ("taking selfie", "찰칵", "Selfie"),
-            ("sunset vibe", "감성", "Vibe"),
-            ("tired happy face", "집으로", "Home"),
-            ("holding souvenir", "끝!", "End")
-        ]
-    elif "연애" in theme:
-        return [
-            ("looking at phone", "연락?", "Reply?"),
-            ("worry bubbles", "삐졌나?", "Mad?"),
-            ("typing message", "고민..", "Typing"),
-            ("phone ringing", "왔다!", "Msg!"),
-            ("meeting awkward", "어색", "Awkward"),
-            ("pouting", "흥!", "Hmph"),
-            ("giving gift", "미안", "Sorry"),
-            ("holding hands", "헤헤", "Hehe"),
-            ("walking sunset", "좋아해", "Love U"),
-            ("blowing kiss", "쪽!", "Kiss")
-        ]
-    elif "덕질" in theme:
-        return [
-            ("screaming at screen", "대박", "Crazy"),
-            ("empty wallet", "텅장", "No money"),
-            ("thinking face", "살까?", "Buy?"),
-            ("hallucination", "사라!", "Buy it"),
-            ("clicking mouse", "결제!", "Pay"),
-            ("waiting door", "택배?", "Wait"),
-            ("unboxing light", "영롱", "Holy"),
-            ("decorating room", "행복", "Happy"),
-            ("eating ramen smiling", "배불러", "Full"),
-            ("holding lightstick", "사랑해", "Love")
-        ]
-    elif "공포" in theme:
-        return [
-            ("lying in bed", "잠안와", "Awake"),
-            ("hearing sound", "뭐지?", "What?"),
-            ("looking at door", "누구?", "Who?"),
-            ("staring dark", "귀신?", "Ghost?"),
-            ("shadow moving", "악!", "Ah!"),
-            ("hiding blanket", "덜덜", "Shake"),
-            ("turning on light", "에잇!", "Light!"),
-            ("revealing cat", "냥이?", "Cat?"),
-            ("sigh relief", "휴..", "Phew"),
-            ("ghost costume", "조심", "Watch out")
-        ]
-    else:
-        return [
-            (f"holding card '{detail}'", "주제", "Topic"),
-            ("confused face", "뭐지?", "What?"),
-            ("opening book", "공부", "Study"),
-            ("teacher pose", "핵심!", "Point"),
-            ("good example O", "좋아", "Good"),
-            ("bad example X", "안돼", "Bad"),
-            (f"doing action {detail}", "도전", "Try"),
-            ("sparkling effect", "성공", "Success"),
-            ("thumbs up", "추천", "Best"),
-            ("subscribe button", "저장!", "Save")
-        ]
+    selected = st.session_state.char_type_selector
+    if selected in CHAR_DEFAULTS:
+        st.session_state.char_feature_input = CHAR_DEFAULTS[selected][0]
+        st.session_state.char_outfit_input = CHAR_DEFAULTS[selected][1]
 
 # ==========================================
-# 5. 사이드바 UI
+# 4. 시나리오 초안 생성 로직
 # ==========================================
-st.sidebar.header("1️⃣ 캐릭터 설정")
-char_type = st.sidebar.selectbox("주인공 유형", list(CHAR_DEFAULTS.keys()), key="char_type_selector", on_change=update_char_defaults)
-
-custom_species = ""
-if char_type == "직접 입력 (Custom)":
-    custom_species = st.sidebar.text_input("캐릭터 종족 입력", "Hamster")
-
-if 'char_feature_input' not in st.session_state: st.session_state.char_feature_input = CHAR_DEFAULTS["고양이 (Cat)"][0]
-if 'char_outfit_input' not in st.session_state: st.session_state.char_outfit_input = CHAR_DEFAULTS["고양이 (Cat)"][1]
-
-char_feature = st.sidebar.text_input("외모 특징", key="char_feature_input")
-char_outfit = st.sidebar.text_input("착용 의상", key="char_outfit_input")
-
-# [NEW] 조연 설정 (Expander)
-with st.sidebar.expander("👥 조연(Supporting Character) 추가"):
-    use_sidekick = st.checkbox("조연 등장시키기", value=False)
-    if use_sidekick:
-        sidekick_type = st.selectbox("조연 유형", list(SIDEKICK_DEFAULTS.keys()))
-        sidekick_desc = st.text_input("조연 묘사", value=SIDEKICK_DEFAULTS[sidekick_type])
-
-st.sidebar.divider()
-st.sidebar.header("2️⃣ 스토리 설정")
-story_theme = st.sidebar.selectbox(
-    "이야기 테마",
-    ["1. 일상 공감 (Daily)", "2. 성장/도전 (Growth)", "3. 꿀팁 정보 (Info)", "4. 감동/힐링 (Healing)", "5. ✈️ 여행/휴가 (Travel)", 
-     "6. 💕 연애/사랑 (Romance)", "7. 👻 공포/미스터리 (Horror)", "8. 📦 제품 리뷰 (Review)", "9. 🍳 요리/먹방 (Cooking)", "10. 🎨 덕질/취미 (Hobby)"],
-    key="theme_selector"
-)
-
-col_btn, col_text = st.sidebar.columns([0.4, 0.6])
-with col_btn:
-    st.write("")
-    st.write("")
-    st.button("🎲 소재 추천", on_click=generate_random_idea)
-
-if 'story_detail_input' not in st.session_state: st.session_state.story_detail_input = "아무것도 안 했는데 벌써 밤"
-with col_text:
-    story_detail = st.text_input("세부 소재", key="story_detail_input")
-
-st.sidebar.divider()
-st.sidebar.header("3️⃣ 스타일 & 연출")
-selected_style_name = st.sidebar.select_slider("그림체 농도", options=list(ART_STYLE_MAP.keys()), value="5. 웹툰/셀식 채색 (Webtoon)")
-
-layout_mode = st.sidebar.selectbox(
-    "카메라 연출",
-    ["1. 안정적 (Standard)", "2. 다이내믹 (Dynamic)", "3. 시네마틱 (Cinematic)", "4. 셀카 모드 (Selfie)", "5. 1인칭 시점 (POV)",
-     "6. 아이소메트릭 (Isometric)", "7. 항공 샷 (Drone)", "8. 로우 앵글 (Low Angle)", "9. 어안 렌즈 (Fish-eye)", "10. 실루엣 (Silhouette)"]
-)
-
-output_mode = st.sidebar.radio("출력 방식", ["단일 컷 (1장 추천)", "캐릭터 시트"], index=0)
-text_lang = st.sidebar.radio("말풍선 언어", ["한국어", "영어", "없음"])
-seed_num = st.sidebar.number_input("시드(Seed)", value=1234)
+def create_draft(topic):
+    return [
+        {"Cut": 1, "Action (행동)": f"holding a title card '{topic}', confident pose", "Text (대사)": f"오늘의 주제:\n{topic}"},
+        {"Cut": 2, "Action (행동)": "walking happily, full of expectation", "Text (대사)": "시작해볼까!"},
+        {"Cut": 3, "Action (행동)": f"facing the situation of {topic}, looking interested", "Text (대사)": "오호라?"},
+        {"Cut": 4, "Action (행동)": "concentrating deeply on the task", "Text (대사)": "집중..."},
+        {"Cut": 5, "Action (행동)": "sudden problem or mistake occurring, shocked face", "Text (대사)": "앗!! 실수!"},
+        {"Cut": 6, "Action (행동)": "feeling frustrated or sad, messy background", "Text (대사)": "망했다..."},
+        {"Cut": 7, "Action (행동)": "lightbulb appearing over head, having a good idea", "Text (대사)": "잠깐! 좋은 생각!"},
+        {"Cut": 8, "Action (행동)": f"solving the problem related to {topic}, energetic", "Text (대사)": "다시 도전!"},
+        {"Cut": 9, "Action (행동)": "successful result, sparkling effect, happy smile", "Text (대사)": "완벽해!"},
+        {"Cut": 10, "Action (행동)": "waving goodbye to camera, holding subscribe button", "Text (대사)": "다들 화이팅!"}
+    ]
 
 # ==========================================
-# 6. 프롬프트 생성 로직 (순열 기능 추가)
+# 5. 프롬프트 조립 로직 (컷 수 옵션 적용)
 # ==========================================
-def make_prompts(mode, ctype, cspec, cfeat, coutfit, theme, detail, layout, style_name, lang, seed, use_side, side_desc):
+def build_prompts(rows, ctype, cfeat, coutfit, style_name, layout, lang, seed, use_side, side_desc, panel_mode):
     
-    # 주인공
-    if ctype == "직접 입력 (Custom)": species = cspec
-    else: species = ctype.split("(")[1].replace(")", "")
-    
-    if species in ["Cat", "Dog", "Rabbit", "Bear", "Hamster", "Tiger"]: base_char = f"Cute anthropomorphic {species} character"
-    else: base_char = f"Cute {species} character"
-    
-    # 조연 통합
-    full_char_desc = f"{base_char}, {cfeat}, wearing {coutfit}, expressive face"
+    # 1. 캐릭터
+    full_char = f"{cfeat}, wearing {coutfit}, expressive face"
     if use_side:
-        full_char_desc += f", accompanied by {side_desc}"
+        full_char += f", accompanied by {side_desc}"
 
-    # 스타일 & 레이아웃
+    # 2. 스타일 & 레이아웃
     style_kw = ART_STYLE_MAP[style_name]
     
     if "다이내믹" in layout: angle_kw = "dynamic dutch angle, action lines"
@@ -252,83 +95,136 @@ def make_prompts(mode, ctype, cspec, cfeat, coutfit, theme, detail, layout, styl
     elif "시네마틱" in layout: angle_kw = "cinematic lighting, depth of field"
     else: angle_kw = "flat composition, symmetrical balance, eye-level shot"
 
-    if "단일" in mode:
-        mode_kw = "single panel, independent illustration, full shot, one image"
+    # 3. [NEW] 컷 수(Panel Count) 설정 로직
+    if "1컷" in panel_mode:
+        # 단일 이미지 강조
+        mode_kw = "single panel, independent illustration, full shot, one image, no borders"
         neg_kw = "--no comic grid, storyboard, multiple panels, split view"
-    else:
-        mode_kw = "character sheet, multiple poses"
+    elif "2컷" in panel_mode:
+        # 세로 2분할
+        mode_kw = "2 panel comic strip, vertical layout, top and bottom panels, storytelling sequence"
+        neg_kw = "--no 4 panel grid, single image"
+    elif "3컷" in panel_mode:
+        # 웹툰형 3분할
+        mode_kw = "3 panel comic strip, vertical webtoon layout, storytelling flow"
+        neg_kw = "--no single image, 4 panel grid"
+    elif "4컷" in panel_mode:
+        # 2x2 격자
+        mode_kw = "4 panel comic, 2x2 grid layout, four distinct scenes, comic strip style"
+        neg_kw = "--no single image, vertical strip"
+    else: # 캐릭터 시트
+        mode_kw = "character sheet, multiple poses, expression sheet, white background"
         neg_kw = ""
 
-    scenarios = get_deep_story(theme, detail)
     prompts = []
     
-    # [NEW] 순열(Permutation)용 리스트
-    perm_actions = [] 
-    
-    context_str = f"Story about {detail}"
-
-    for action, ko, en in scenarios:
-        if "한국어" in lang: text_p = f'speech bubble with text "{ko}", written in legible Korean Hangul font, manhwa style speech bubble'
-        elif "영어" in lang: text_p = f'speech bubble with text "{en}", written in English comic font'
-        else: text_p = "no text"
+    for row in rows:
+        action = row["Action (행동)"]
+        text = row["Text (대사)"]
         
-        # 개별 프롬프트
-        p = f"/imagine prompt: **[Story]** {context_str} **[Subject]** {full_char_desc} **[Action]** {action} **[Text]** {text_p} **[Style]** {style_kw}, {angle_kw}, {mode_kw} --ar 4:5 --niji 6 --seed {seed} {neg_kw}"
+        # 언어 처리
+        if lang == "한국어":
+            text_p = f'speech bubble with text "{text}", written in legible Korean Hangul font, manhwa style speech bubble'
+        elif lang == "영어":
+            text_p = f'speech bubble with text "{text}", written in English comic font'
+        else:
+            text_p = "no text"
+            
+        p = f"/imagine prompt: **[Subject]** {full_char} **[Action]** {action} **[Text]** {text_p} **[Style]** {style_kw}, {angle_kw}, {mode_kw} --ar 4:5 --niji 6 --seed {seed} {neg_kw}"
         prompts.append(p)
-
-        # 순열용 파트 저장 (Action + Text)
-        perm_part = f"{action} **[Text]** {text_p}"
-        perm_actions.append(perm_part)
-
-    # [NEW] 순열 프롬프트 생성
-    # {Action1, Action2, ...} 형태로 묶음
-    perm_block = ", ".join(perm_actions)
-    permutation_prompt = f"/imagine prompt: **[Story]** {context_str} **[Subject]** {full_char_desc} **[Action]** {{ {perm_block} }} **[Style]** {style_kw}, {angle_kw}, {mode_kw} --ar 4:5 --niji 6 --seed {seed} {neg_kw}"
-
-    return prompts, scenarios, permutation_prompt
+        
+    return prompts
 
 # ==========================================
-# 7. 결과 출력 UI
+# 6. UI 구성
 # ==========================================
-if 'generated_prompts' not in st.session_state:
-    st.session_state.generated_prompts = []
-    st.session_state.current_scenarios = []
-    st.session_state.perm_prompt = ""
 
-# 버튼 클릭 시 조연 정보도 전달
-side_desc_val = sidekick_desc if use_sidekick else ""
+# --- 사이드바 ---
+st.sidebar.header("1️⃣ 캐릭터 설정")
+char_type = st.sidebar.selectbox("주인공 선택", list(CHAR_DEFAULTS.keys()), key="char_type_selector", on_change=update_char_defaults)
 
-if st.button("🚀 마이툰 프롬프트 생성하기 (Click)"):
-    with st.spinner(f"'{st.session_state.story_detail_input}' 이야기를 만드는 중..."):
-        prompts, scenes, perm = make_prompts(
-            output_mode, char_type, custom_species, char_feature, char_outfit, 
-            story_theme, st.session_state.story_detail_input, layout_mode, selected_style_name, text_lang, seed_num,
-            use_sidekick, side_desc_val
-        )
-        st.session_state.generated_prompts = prompts
-        st.session_state.current_scenarios = scenes
-        st.session_state.perm_prompt = perm
+if 'char_feature_input' not in st.session_state: st.session_state.char_feature_input = CHAR_DEFAULTS["나노바나나 (Original)"][0]
+if 'char_outfit_input' not in st.session_state: st.session_state.char_outfit_input = CHAR_DEFAULTS["나노바나나 (Original)"][1]
 
-if st.session_state.generated_prompts:
-    st.divider()
-    st.success(f"✅ 생성 완료! (주제: {st.session_state.story_detail_input})")
+char_feature = st.sidebar.text_input("외모/종족 특징", key="char_feature_input")
+char_outfit = st.sidebar.text_input("의상/스타일", key="char_outfit_input")
+
+with st.sidebar.expander("👥 조연(Sidekick) 추가"):
+    use_sidekick = st.checkbox("조연 등장시키기", value=False)
+    sidekick_type = st.selectbox("조연 유형", list(SIDEKICK_DEFAULTS.keys()))
+    sidekick_desc = st.text_input("조연 묘사", value=SIDEKICK_DEFAULTS[sidekick_type])
+
+st.sidebar.divider()
+st.sidebar.header("2️⃣ 스타일 설정")
+style_name = st.sidebar.select_slider("그림체 농도", options=list(ART_STYLE_MAP.keys()), value="5. 웹툰/셀식 채색 (Webtoon)")
+layout_mode = st.sidebar.selectbox("연출 방식", ["1. 안정적 (Standard)", "2. 다이내믹 (Dynamic)", "3. 시네마틱 (Cinematic)", "4. 셀카 모드 (Selfie)", "5. 1인칭 시점 (POV)", "6. 아이소메트릭 (Isometric)", "7. 항공 샷 (Drone)", "8. 로우 앵글 (Low Angle)", "9. 어안 렌즈 (Fish-eye)", "10. 실루엣 (Silhouette)"])
+
+# [NEW] 컷 수 선택 옵션 추가
+panel_choice = st.sidebar.selectbox(
+    "🎞️ 1장당 컷 수 (Panel Count)", 
+    ["1컷 (단일 이미지 추천)", "2컷 (세로 분할)", "3컷 (웹툰 스타일)", "4컷 (격자/Grid)", "캐릭터 시트 (다양한 포즈)"]
+)
+
+text_lang = st.sidebar.radio("말풍선 언어", ["한국어", "영어", "없음"])
+seed_num = st.sidebar.number_input("시드(Seed)", value=1234)
+
+
+# --- 메인 화면: 시나리오 에디터 ---
+st.subheader("📝 주제 입력 & 시나리오 편집")
+
+col1, col2 = st.columns([0.7, 0.3])
+with col1:
+    topic_input = st.text_input("이야기 주제를 입력하세요", value="복권 당첨된 하루")
+with col2:
+    st.write("") 
+    st.write("")
+    if st.button("✨ 시나리오 초안 생성"):
+        st.session_state.scenario_rows = create_draft(topic_input)
+
+# 세션 상태 초기화
+if 'scenario_rows' not in st.session_state:
+    st.session_state.scenario_rows = create_draft("복권 당첨된 하루")
+
+# 데이터 에디터 (수정 가능)
+edited_rows = st.data_editor(
+    st.session_state.scenario_rows,
+    num_rows="fixed",
+    column_config={
+        "Cut": st.column_config.NumberColumn("컷", disabled=True, width="small"),
+        "Action (행동)": st.column_config.TextColumn("행동 (영어 권장)", width="large"),
+        "Text (대사)": st.column_config.TextColumn("대사 (말풍선)", width="medium"),
+    },
+    hide_index=True
+)
+
+st.divider()
+
+# --- 프롬프트 생성 버튼 ---
+if st.button("🚀 프롬프트 변환하기 (Click)"):
+    # 에디터의 내용을 바탕으로 프롬프트 생성
+    final_prompts = build_prompts(
+        edited_rows, char_type, char_feature, char_outfit, 
+        style_name, layout_mode, text_lang, seed_num, use_sidekick, sidekick_desc, panel_choice
+    )
+    st.session_state.final_prompts = final_prompts
+
+# --- 결과 출력 ---
+if 'final_prompts' in st.session_state and st.session_state.final_prompts:
+    st.success(f"✅ 생성 완료! (설정: {panel_choice})")
     
-    # [1] ⚡ 원클릭 자동 생성 코드 (Permutation)
-    st.subheader("⚡ 원클릭 자동 생성 코드 (추천)")
-    st.info("""
-    **이 코드를 복사해서 미드저니에 붙여넣으면, 10장의 이미지가 한 번에 생성됩니다.**
-    (미드저니가 "10개의 작업을 생성하시겠습니까?"라고 물으면 'Yes'를 누르세요.)
-    *Standard 요금제 이상 필수*
-    """)
-    st.code(st.session_state.perm_prompt, language="markdown")
-    
+    # 1. 전체 복사 (접이식)
+    with st.expander("📋 전체 프롬프트 한 번에 보기 (메모장 저장용)"):
+        st.warning("주의: 디스코드에 한 번에 붙여넣으면 1장만 생성될 수 있습니다.")
+        st.code("\n\n".join(st.session_state.final_prompts), language="markdown")
+
     st.divider()
+    st.markdown("### 👇 컷별 상세 확인 & 복사")
+    st.caption("제목(대사)을 확인하고 코드 박스 오른쪽 위의 📄 버튼을 눌러 복사하세요.")
 
-    # [2] 개별 확인 영역
-    st.subheader("✂️ 컷별 상세 확인 & 개별 복사")
-    st.caption("자동 생성이 안 되거나 Basic 요금제인 경우, 아래에서 하나씩 복사하세요.")
-
-    for i, p in enumerate(st.session_state.generated_prompts):
-        scene_txt = st.session_state.current_scenarios[i][1] if "한국어" in text_lang else st.session_state.current_scenarios[i][2]
-        st.markdown(f"#### 🎞️ Cut {i+1}: {scene_txt}")
+    for i, p in enumerate(st.session_state.final_prompts):
+        current_text = edited_rows[i]["Text (대사)"]
+        current_action = edited_rows[i]["Action (행동)"]
+        
+        st.markdown(f"#### 🎞️ Cut {i+1}: {current_text}")
+        st.caption(f"Action: {current_action}")
         st.code(p, language="markdown")
